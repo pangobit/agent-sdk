@@ -1,0 +1,57 @@
+---
+globs: *.go
+---
+
+# Go Development Patterns
+
+## Code Style & Conventions
+
+### Functional Approach
+- **Paradigm**: Favor functional and data-driven concepts over Object-Oriented Programming (OOP)
+- **Functions**: Use pure functions when possible, pass data as parameters
+- **Error Handling**: Use `error` return values; avoid panics for recoverable errors
+- **Naming**: Follow idiomatic Go naming conventions
+
+### Project Structure
+Follow standard Go project layout:
+- [cmd/mcp/main.go](mdc:cmd/mcp/main.go) - Application entry point
+- [internal/](mdc:internal/) - Private application code
+- [pkg/](mdc:pkg/) - Public library code
+
+### Error Handling Patterns
+```go
+// Good: Return errors, don't panic
+func processData(data []byte) ([]byte, error) {
+    if len(data) == 0 {
+        return nil, fmt.Errorf("empty data")
+    }
+    // Process data...
+    return result, nil
+}
+
+// Good: Use error wrapping
+if err != nil {
+    return fmt.Errorf("failed to process data: %w", err)
+}
+```
+
+### Configuration Management
+- Use Viper for configuration (see [viper-cobra.mdc](mdc:.cursor/rules/viper-cobra.mdc))
+- Pass configuration as parameters to functions
+- Validate configuration at startup
+
+### Testing
+- Use `go test ./...` for testing
+- Write tests for all public functions
+- Use table-driven tests for multiple scenarios
+- Mock external dependencies
+
+### Dependencies
+- Keep dependencies minimal (prefer standard library)
+- Use `go mod tidy` to clean up dependencies
+- Pin dependency versions in [go.mod](mdc:go.mod)
+
+### Formatting
+- Use `gofmt` or `goimports` for code formatting
+- Run `golangci-lint run` for linting (if available)
+- Follow Go style guide conventions

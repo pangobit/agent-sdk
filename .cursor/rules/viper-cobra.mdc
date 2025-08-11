@@ -1,0 +1,117 @@
+---
+description: Dealing with configuration files or CLI paramters
+alwaysApply: false 
+---
+
+# Viper and Cobra CLI Patterns
+
+## Project Structure
+- Main entry: [cmd/mcp/main.go](mdc:cmd/mcp/main.go)
+- Config: [internal/config/config.go](mdc:internal/config/config.go)
+- Commands: [internal/cmd/](mdc:internal/cmd/)
+
+## Viper Configuration Setup
+
+```go
+// internal/config/config.go
+type Config struct {
+    Server   ServerConfig   `mapstructure:"server"`
+    Database DatabaseConfig `mapstructure:"database"`
+    Logging  LoggingConfig  `mapstructure:"logging"`
+}
+
+func LoadConfig() (*Config, error) {
+    viper.SetConfigName("config")
+    viper.SetConfigType("yaml")
+    viper.AddConfigPath(".")
+    viper.AddConfigPath("./config")
+    viper.AddConfigPath("$HOME/.mcp")
+    
+    viper.SetEnvPrefix("MCP")
+    viper.AutomaticEnv()
+    viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+    
+    viper.SetDefault("server.port", 8080)
+    viper.SetDefault("server.host", "localhost")
+    viper.SetDefault("logging.level", "info")
+    
+    if err := viper.ReadInConfig(); err != nil {
+        if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+            return nil, fmt.Errorf("failed to read config: %w", err)
+        }
+    }
+    
+    var cfg Config
+    if err := viper.Unmarshal(&cfg); err != nil {
+        return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+    }
+    
+    return &cfg, nil
+}
+```
+
+## Cobra Root Command
+
+```go
+// cmd/mcp/main.go -- EXAMPLE ONLY
+var rootCmd = &cobra.Command{
+    Use:   "mcp",
+    Short: "MCP - Model Context Protocol implementation",
+    Long:  `A simple, internal implementation of MCP for Pangobit, LLC`,
+    PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+        cfg, err := config.LoadConfig()
+        if err != nil {
+            return err
+        }
+        cmd.SetContext(context.WithValue(cmd.Context(), "config", cfg))
+        return nil
+    },
+}
+
+func Execute() error {
+    return rootCmd.Execute()
+}
+```
+
+## Subcommand Pattern
+
+```go
+// internal/cmd/server.go
+var serverCmd = &cobra.Command{
+    Use:   "server",
+    Short: "Start the MCP server",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        cfg := cmd.Context().Value("config").(*config.Config)
+        return startServer(cfg)
+    },
+}
+
+func init() {
+    rootCmd.AddCommand(serverCmd)
+    
+    serverCmd.Flags().IntP("port", "p", 8080, "Server port")
+    serverCmd.Flags().StringP("host", "h", "localhost", "Server host")
+    
+    viper.BindPFlag("server.port", serverCmd.Flags().Lookup("port"))
+    viper.BindPFlag("server.host", serverCmd.Flags().Lookup("host"))
+}
+```
+
+## Configuration Priority
+1. Command line flags
+2. Environment variables (MCP_ prefix)
+3. Config file (config.yaml)
+4. Default values
+
+## Dependencies
+Add to [go.mod](mdc:go.mod):
+```
+github.com/spf13/cobra
+github.com/spf13/viper
+```
+
+## Functional Approach
+- Pass config as parameters to functions
+- Use pure functions for validation
+- Avoid global variables
+- Keep commands focused and single-purpose
