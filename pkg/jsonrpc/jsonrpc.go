@@ -14,16 +14,10 @@ import (
 )
 
 type serverRequest struct {
-	Method string           `json:"method"`
-	Params *json.RawMessage `json:"params"`
-	ID     *json.RawMessage `json:"id"`
-}
-
-type Request struct {
 	JSONRPC string           `json:"jsonrpc"`
 	Method  string           `json:"method"`
 	Params  *json.RawMessage `json:"params"`
-	ID      *json.RawMessage `json:"id"` // valid: string, number, or null
+	ID      *json.RawMessage `json:"id"`
 }
 
 type Response struct {
@@ -101,13 +95,16 @@ func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
 	c.request.ID = nil
 
 	if err := c.decoder.Decode(&c.request); err != nil {
-		fmt.Println("error decoding request", err)
 		return ErrorParseError(err)
 	}
 
 	switch c.request.Method {
 	case "":
 		return ErrorMethodNotFound(nil)
+	}
+
+	if c.request.JSONRPC != jsonrpcVersion || c.request.JSONRPC == "" {
+		return ErrorInvalidRequest(nil)
 	}
 
 	r.ServiceMethod = c.request.Method

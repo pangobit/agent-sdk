@@ -9,6 +9,8 @@ import (
 	"sync"
 )
 
+const jsonrpcVersion = "2.0"
+
 type clientCodec struct {
 	decoder *json.Decoder
 	encoder *json.Encoder
@@ -22,9 +24,10 @@ type clientCodec struct {
 }
 
 type clientRequest struct {
-	Method string `json:"method"`
-	Params [1]any `json:"params"`
-	ID     uint64 `json:"id"`
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  [1]any `json:"params"`
+	ID      uint64 `json:"id"`
 }
 
 func (c *clientCodec) WriteRequest(r *rpc.Request, param any) error {
@@ -32,6 +35,7 @@ func (c *clientCodec) WriteRequest(r *rpc.Request, param any) error {
 	c.pending[r.Seq] = r.ServiceMethod
 	c.mutex.Unlock()
 
+	c.request.JSONRPC = jsonrpcVersion
 	c.request.Method = r.ServiceMethod
 	c.request.Params[0] = param
 	c.request.ID = r.Seq

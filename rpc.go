@@ -33,14 +33,7 @@ func main() {
 	}()
 
 	log.Println("serving on port 1234")
-	go func() {
-		err = server.Serve(listener)
-		if err != nil {
-			fmt.Println("error serving", err)
-			log.Fatal(err)
-		}
-	}()
-
+	go server.Serve(listener)
 	startClient()
 }
 
