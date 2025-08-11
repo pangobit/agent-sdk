@@ -13,6 +13,12 @@ import (
 	"sync"
 )
 
+type serverRequest struct {
+	Method string           `json:"method"`
+	Params *json.RawMessage `json:"params"`
+	ID     *json.RawMessage `json:"id"`
+}
+
 type Request struct {
 	JSONRPC string           `json:"jsonrpc"`
 	Method  string           `json:"method"`
@@ -82,7 +88,7 @@ type serverCodec struct {
 	encoder *json.Encoder
 	closer  io.Closer
 
-	request Request
+	request serverRequest
 
 	mutex   sync.Mutex
 	seq     uint64
@@ -90,7 +96,12 @@ type serverCodec struct {
 }
 
 func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
-	if err := c.decoder.Decode(r); err != nil {
+	c.request.Method = ""
+	c.request.Params = nil
+	c.request.ID = nil
+
+	if err := c.decoder.Decode(&c.request); err != nil {
+		fmt.Println("error decoding request", err)
 		return ErrorParseError(err)
 	}
 
