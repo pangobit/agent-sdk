@@ -402,3 +402,296 @@ func BenchmarkValidateResponseWithError(b *testing.B) {
 		_ = validateResponse(response)
 	}
 }
+
+// TestValidateMethod tests the validateMethod function
+func TestValidateMethod(t *testing.T) {
+	tests := []struct {
+		name    string
+		method  string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid method name",
+			method:  "getUser",
+			wantErr: false,
+		},
+		{
+			name:    "valid method name with underscore",
+			method:  "get_user_info",
+			wantErr: false,
+		},
+		{
+			name:    "valid method name with numbers",
+			method:  "getUser123",
+			wantErr: false,
+		},
+		{
+			name:    "valid method name with special characters",
+			method:  "get-user-info",
+			wantErr: false,
+		},
+		{
+			name:    "valid method name starting with different letters",
+			method:  "abc123",
+			wantErr: false,
+		},
+		{
+			name:    "valid method name with dots but not starting with rpc",
+			method:  "api.v1.getUser",
+			wantErr: false,
+		},
+		{
+			name:    "empty method name",
+			method:  "",
+			wantErr: true,
+			errMsg:  "method name cannot be empty",
+		},
+		{
+			name:    "reserved method starting with rpc.",
+			method:  "rpc.getUser",
+			wantErr: true,
+			errMsg:  "method name 'rpc.getUser' is reserved for rpc-internal methods and extensions",
+		},
+		{
+			name:    "reserved method rpc. with no additional text",
+			method:  "rpc.",
+			wantErr: true,
+			errMsg:  "method name 'rpc.' is reserved for rpc-internal methods and extensions",
+		},
+		{
+			name:    "reserved method with complex rpc. prefix",
+			method:  "rpc.internal.system.getStatus",
+			wantErr: true,
+			errMsg:  "method name 'rpc.internal.system.getStatus' is reserved for rpc-internal methods and extensions",
+		},
+		{
+			name:    "method starting with rpc but not followed by dot",
+			method:  "rpcgetUser",
+			wantErr: false,
+		},
+		{
+			name:    "method with rpc in middle",
+			method:  "getRpcUser",
+			wantErr: false,
+		},
+		{
+			name:    "method ending with rpc",
+			method:  "getUserRpc",
+			wantErr: false,
+		},
+		{
+			name:    "method with rpc. in middle",
+			method:  "api.rpc.getUser",
+			wantErr: false,
+		},
+		{
+			name:    "method with uppercase RPC",
+			method:  "RPC.getUser",
+			wantErr: false,
+		},
+		{
+			name:    "method with mixed case rPc",
+			method:  "rPc.getUser",
+			wantErr: false,
+		},
+		{
+			name:    "method with unicode characters",
+			method:  "getUser🚀",
+			wantErr: false,
+		},
+		{
+			name:    "method with spaces",
+			method:  "get user info",
+			wantErr: false,
+		},
+		{
+			name:    "method with tabs",
+			method:  "get\tuser\tinfo",
+			wantErr: false,
+		},
+		{
+			name:    "method with newlines",
+			method:  "get\nuser\ninfo",
+			wantErr: false,
+		},
+		{
+			name:    "method with special unicode characters",
+			method:  "getUser\u200B", // Zero-width space
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMethod(tt.method)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateMethod() expected error but got none")
+					return
+				}
+				if tt.errMsg != "" && err.Error() != tt.errMsg {
+					t.Errorf("validateMethod() error = %v, want error message %v", err.Error(), tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("validateMethod() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateMethodEdgeCases tests edge cases for the validateMethod function
+func TestValidateMethodEdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		method  string
+		wantErr bool
+	}{
+		{
+			name:    "method with exactly 3 characters",
+			method:  "abc",
+			wantErr: false,
+		},
+		{
+			name:    "method with exactly 4 characters but not rpc.",
+			method:  "abcd",
+			wantErr: false,
+		},
+		{
+			name:    "method with exactly 4 characters and is rpc.",
+			method:  "rpc.",
+			wantErr: true,
+		},
+		{
+			name:    "method with 5 characters starting with rpc.",
+			method:  "rpc.x",
+			wantErr: true,
+		},
+		{
+			name:    "method with very long name",
+			method:  "thisIsAVeryLongMethodNameThatShouldBeValidAndNotCauseAnyIssuesWithTheValidationLogic",
+			wantErr: false,
+		},
+		{
+			name:    "method with only special characters",
+			method:  "!@#$%^&*()",
+			wantErr: false,
+		},
+		{
+			name:    "method with only numbers",
+			method:  "123456789",
+			wantErr: false,
+		},
+		{
+			name:    "method with only dots",
+			method:  "...",
+			wantErr: false,
+		},
+		{
+			name:    "method with rpc followed by multiple dots",
+			method:  "rpc...",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMethod(tt.method)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateMethod() expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("validateMethod() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateMethodSpecCompliance tests compliance with JSON-RPC 2.0 specification
+func TestValidateMethodSpecCompliance(t *testing.T) {
+	tests := []struct {
+		name    string
+		method  string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid method according to spec",
+			method:  "getUser",
+			wantErr: false,
+		},
+		{
+			name:    "reserved method rpc. according to spec",
+			method:  "rpc.getUser",
+			wantErr: true,
+			errMsg:  "method name 'rpc.getUser' is reserved for rpc-internal methods and extensions",
+		},
+		{
+			name:    "empty method name according to spec",
+			method:  "",
+			wantErr: true,
+			errMsg:  "method name cannot be empty",
+		},
+		{
+			name:    "method with rpc. prefix according to spec",
+			method:  "rpc.internal.getStatus",
+			wantErr: true,
+			errMsg:  "method name 'rpc.internal.getStatus' is reserved for rpc-internal methods and extensions",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMethod(tt.method)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateMethod() expected error but got none")
+					return
+				}
+				if tt.errMsg != "" && err.Error() != tt.errMsg {
+					t.Errorf("validateMethod() error = %v, want error message %v", err.Error(), tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("validateMethod() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+// Benchmark tests for validateMethod function
+func BenchmarkValidateMethodValid(b *testing.B) {
+	method := "getUser"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = validateMethod(method)
+	}
+}
+
+func BenchmarkValidateMethodReserved(b *testing.B) {
+	method := "rpc.getUser"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = validateMethod(method)
+	}
+}
+
+func BenchmarkValidateMethodEmpty(b *testing.B) {
+	method := ""
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = validateMethod(method)
+	}
+}
