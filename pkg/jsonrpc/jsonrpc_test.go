@@ -1,8 +1,28 @@
 package jsonrpc
 
 import (
+	"encoding/json"
 	"testing"
 )
+
+// Helper functions to create ID values for testing
+func intID(v int) *json.RawMessage {
+	data, _ := json.Marshal(v)
+	raw := json.RawMessage(data)
+	return &raw
+}
+
+func stringID(v string) *json.RawMessage {
+	data, _ := json.Marshal(v)
+	raw := json.RawMessage(data)
+	return &raw
+}
+
+func nullID() *json.RawMessage {
+	data, _ := json.Marshal(nil)
+	raw := json.RawMessage(data)
+	return &raw
+}
 
 func TestValidateResponse(t *testing.T) {
 	tests := []struct {
@@ -16,7 +36,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false,
 		},
@@ -24,7 +44,7 @@ func TestValidateResponse(t *testing.T) {
 			name: "valid response without result",
 			response: Response{
 				JSONRPC: "2.0",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false,
 		},
@@ -33,7 +53,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  nil,
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false,
 		},
@@ -42,7 +62,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: true,
 			errMsg:  "invalid JSON-RPC version",
@@ -52,7 +72,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "1.0",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: true,
 			errMsg:  "invalid JSON-RPC version",
@@ -62,7 +82,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "3.0",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: true,
 			errMsg:  "invalid JSON-RPC version",
@@ -72,7 +92,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false, // This should actually be valid since it's exactly "2.0"
 		},
@@ -84,7 +104,7 @@ func TestValidateResponse(t *testing.T) {
 					Code:    -32601,
 					Message: "Method not found",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 			errMsg:  "error: Method not found",
@@ -97,7 +117,7 @@ func TestValidateResponse(t *testing.T) {
 					Code:    -32600,
 					Message: "",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 			errMsg:  "error: ",
@@ -110,17 +130,17 @@ func TestValidateResponse(t *testing.T) {
 					Code:    -32700,
 					Message: "Parse error: Invalid JSON was received by the server",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 			errMsg:  "error: Parse error: Invalid JSON was received by the server",
 		},
 		{
-			name: "valid response with string ID",
+			name: "valid response with numeric string ID",
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      1, // Note: Current implementation uses int, but spec allows string/number/null
+				ID:      stringID("1"), // JSON-RPC spec allows string, number, or null
 			},
 			wantErr: false,
 		},
@@ -129,7 +149,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      0,
+				ID:      intID(0),
 			},
 			wantErr: false,
 		},
@@ -138,7 +158,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      -1,
+				ID:      intID(-1),
 			},
 			wantErr: false,
 		},
@@ -147,7 +167,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      999999999,
+				ID:      intID(999999999),
 			},
 			wantErr: false,
 		},
@@ -163,7 +183,7 @@ func TestValidateResponse(t *testing.T) {
 						"key": "value",
 					},
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: false,
 		},
@@ -172,7 +192,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  []interface{}{1, "two", 3.14, true, nil},
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false,
 		},
@@ -181,7 +201,7 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  true,
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false,
 		},
@@ -190,7 +210,25 @@ func TestValidateResponse(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  3.14159,
-				ID:      1,
+				ID:      intID(1),
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid response with null ID",
+			response: Response{
+				JSONRPC: "2.0",
+				Result:  "success",
+				ID:      nullID(),
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid response with string ID",
+			response: Response{
+				JSONRPC: "2.0",
+				Result:  "success",
+				ID:      stringID("request-123"),
 			},
 			wantErr: false,
 		},
@@ -229,7 +267,7 @@ func TestValidateResponseEdgeCases(t *testing.T) {
 			response: Response{
 				JSONRPC: " 2.0 ",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: true,
 		},
@@ -238,7 +276,7 @@ func TestValidateResponseEdgeCases(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0\u200B", // Zero-width space
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: true,
 		},
@@ -250,7 +288,7 @@ func TestValidateResponseEdgeCases(t *testing.T) {
 					Code:    -32600,
 					Message: "Error with special chars: !@#$%^&*()_+-=[]{}|;':\",./<>?",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 		},
@@ -262,7 +300,7 @@ func TestValidateResponseEdgeCases(t *testing.T) {
 					Code:    -32600,
 					Message: "Error with unicode: 🚀🌟🎉",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 		},
@@ -274,7 +312,7 @@ func TestValidateResponseEdgeCases(t *testing.T) {
 					Code:    -32600,
 					Message: "This is a very long error message that contains many characters and should be handled properly by the validation function. It includes various types of content and should not cause any issues with the validation logic.",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 		},
@@ -310,7 +348,7 @@ func TestValidateResponseSpecCompliance(t *testing.T) {
 			response: Response{
 				JSONRPC: "2.0",
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: false,
 		},
@@ -322,7 +360,7 @@ func TestValidateResponseSpecCompliance(t *testing.T) {
 					Code:    -32601,
 					Message: "Method not found",
 				},
-				ID: 1,
+				ID: intID(1),
 			},
 			wantErr: true,
 			errMsg:  "error: Method not found",
@@ -332,7 +370,7 @@ func TestValidateResponseSpecCompliance(t *testing.T) {
 			response: Response{
 				JSONRPC: "1.0", // Invalid version
 				Result:  "success",
-				ID:      1,
+				ID:      intID(1),
 			},
 			wantErr: true,
 			errMsg:  "invalid JSON-RPC version",
@@ -365,7 +403,7 @@ func BenchmarkValidateResponseValid(b *testing.B) {
 	response := Response{
 		JSONRPC: "2.0",
 		Result:  "success",
-		ID:      1,
+		ID:      intID(1),
 	}
 
 	b.ResetTimer()
@@ -378,7 +416,7 @@ func BenchmarkValidateResponseInvalidVersion(b *testing.B) {
 	response := Response{
 		JSONRPC: "1.0",
 		Result:  "success",
-		ID:      1,
+		ID:      intID(1),
 	}
 
 	b.ResetTimer()
@@ -394,7 +432,7 @@ func BenchmarkValidateResponseWithError(b *testing.B) {
 			Code:    -32601,
 			Message: "Method not found",
 		},
-		ID: 1,
+		ID: intID(1),
 	}
 
 	b.ResetTimer()

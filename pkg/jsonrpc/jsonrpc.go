@@ -17,14 +17,14 @@ type Request struct {
 	JSONRPC string           `json:"jsonrpc"`
 	Method  string           `json:"method"`
 	Params  *json.RawMessage `json:"params"`
-	ID      int              `json:"id"`
+	ID      *json.RawMessage `json:"id"` // valid: string, number, or null
 }
 
 type Response struct {
-	JSONRPC string `json:"jsonrpc"`
-	Result  any    `json:"result"`
-	Error   *Error `json:"error"`
-	ID      int    `json:"id"`
+	JSONRPC string           `json:"jsonrpc"`
+	Result  any              `json:"result"`
+	Error   *Error           `json:"error"`
+	ID      *json.RawMessage `json:"id"`
 }
 
 func validateResponse(response Response) error {
@@ -84,8 +84,9 @@ type serverCodec struct {
 
 	request Request
 
-	lock sync.Mutex
-	seq  uint64
+	mutex   sync.Mutex
+	seq     uint64
+	pending map[uint64]*json.RawMessage
 }
 
 func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
@@ -99,6 +100,16 @@ func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
 	}
 
 	r.ServiceMethod = c.request.Method
+
+	// JSON-RPC 2.0 allows the ID to be a "number" (so stupid), a string, or null.
+	// Go's rpc package expects a uint64, so, like the old json1.0 rpc package,
+	// we assign a uint64 and map it to the original for later.
+	c.mutex.Lock()
+	c.seq++
+	c.pending[c.seq] = c.request.ID
+	c.request.ID = nil
+	r.Seq = c.seq
+	c.mutex.Unlock()
 	return nil
 }
 
@@ -119,9 +130,35 @@ func (c *serverCodec) ReadRequestBody(body any) error {
 	return json.Unmarshal(*c.request.Params, &params)
 }
 
-func (c *serverCodec) WriteResponse(r *rpc.Response, body any) error {
+var jsonNull = json.RawMessage([]byte("null"))
 
-	return nil
+func (c *serverCodec) WriteResponse(r *rpc.Response, body any) error {
+	c.mutex.Lock()
+
+	b, ok := c.pending[r.Seq]
+	if !ok {
+		c.mutex.Unlock()
+		return ErrorInvalidRequest(nil)
+	}
+	delete(c.pending, r.Seq)
+	c.mutex.Unlock()
+
+	if b == nil {
+		b = &jsonNull
+	}
+
+	response := Response{
+		JSONRPC: "2.0",
+		ID:      b,
+	}
+
+	if r.Error == "" {
+		response.Result = body
+	} else {
+		response.Result = r.Error
+	}
+
+	return c.encoder.Encode(response)
 }
 
 func (c *serverCodec) Close() error {
