@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"github.com/pangobit/mcp/pkg/server"
+	"github.com/pangobit/agent-sdk/pkg/server"
 )
 
 type SqliteRepository struct {
@@ -16,9 +16,8 @@ func NewSqliteRepository(db *sql.DB) *SqliteRepository {
 }
 
 func WithSqliteRepository(db *sql.DB) server.ServerOpts {
-	return func(s *server.Server) {
-		s.Tools = NewSqliteRepository(db)
-	}
+	repo := NewSqliteRepository(db)
+	return server.WithToolRepository(repo)
 }
 
 const getToolQuery = `

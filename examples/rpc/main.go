@@ -6,7 +6,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/pangobit/mcp/pkg/jsonrpc"
+	"github.com/pangobit/agent-sdk/pkg/jsonrpc"
 )
 
 type HelloService struct{}

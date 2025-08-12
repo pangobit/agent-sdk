@@ -1,4 +1,4 @@
-module github.com/pangobit/mcp
+module github.com/pangobit/agent-sdk
 
 go 1.24.1
 

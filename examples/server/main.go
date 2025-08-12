@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/pangobit/mcp/pkg/server"
-	"github.com/pangobit/mcp/pkg/server/sqlite"
+	"github.com/pangobit/agent-sdk/pkg/server"
+	"github.com/pangobit/agent-sdk/pkg/server/sqlite"
 	_ "modernc.org/sqlite"
 )
 

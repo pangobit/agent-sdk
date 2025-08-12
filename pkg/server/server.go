@@ -2,18 +2,24 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"reflect"
 )
 
+type Connection interface {
+	io.ReadWriteCloser
+}
+
 type Server struct {
-	Tools ToolRepository
+	conn  Connection
+	tools ToolRepository
 }
 
 type ServerOpts func(*Server)
 
 func WithToolRepository(repo ToolRepository) ServerOpts {
 	return func(s *Server) {
-		s.Tools = repo
+		s.tools = repo
 	}
 }
 
