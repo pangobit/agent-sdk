@@ -1,3 +1,5 @@
+// Adapted from the stdlib json-rpc 1.0 library.
+
 package jsonrpc
 
 import (
@@ -96,7 +98,7 @@ func (c *clientCodec) Close() error {
 	return c.closer.Close()
 }
 
-func NewClient(conn net.Conn) *rpc.Client {
+func NewClient(conn Connection) *rpc.Client {
 	return rpc.NewClientWithCodec(&clientCodec{
 		decoder: json.NewDecoder(conn),
 		encoder: json.NewEncoder(conn),

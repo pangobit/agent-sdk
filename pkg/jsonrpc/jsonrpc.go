@@ -172,3 +172,7 @@ func (c *serverCodec) WriteResponse(r *rpc.Response, body any) error {
 func (c *serverCodec) Close() error {
 	return c.closer.Close()
 }
+
+type Connection interface {
+	io.ReadWriteCloser
+}
