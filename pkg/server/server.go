@@ -68,5 +68,4 @@ type PromptTemplate struct {
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	Arguments   map[string]any `json:"arguments"`
-	Required    []string       `json:"required"`
 }
