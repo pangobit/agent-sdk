@@ -7,16 +7,26 @@ import (
 	"github.com/pangobit/agent-sdk/pkg/server"
 )
 
+const defaultDBPath = "agent.db"
+
 type SqliteRepository struct {
 	db *sql.DB
 }
 
-func NewSqliteRepository(db *sql.DB) *SqliteRepository {
+func newSqliteRepository(db *sql.DB) *SqliteRepository {
 	return &SqliteRepository{db: db}
 }
 
-func WithSqliteRepository(db *sql.DB) server.ServerOpts {
-	repo := NewSqliteRepository(db)
+func WithDefaultDB() server.ServerOpts {
+	db, err := sql.Open("sqlite", defaultDBPath)
+	if err != nil {
+		panic(err)
+	}
+	return WithDB(db)
+}
+
+func WithDB(db *sql.DB) server.ServerOpts {
+	repo := newSqliteRepository(db)
 	return server.WithToolRepository(repo)
 }
 
