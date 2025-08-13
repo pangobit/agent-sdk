@@ -41,6 +41,10 @@ func NewServer(opts ...ServerOpts) *Server {
 	return s
 }
 
+func (s *Server) ListenAndServe(addr string) error {
+	return s.transport.ListenAndServe(addr)
+}
+
 func (s *Server) HandleRequest(path string, reader io.Reader, writer io.Writer) error {
 	dec := json.NewDecoder(reader)
 	var req map[string]any

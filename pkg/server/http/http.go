@@ -4,12 +4,12 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"net/http"
 	stdhttp "net/http"
 	"time"
-
-	"github.com/pangobit/agent-sdk/pkg/server"
 )
 
 type HTTPTransport struct {
@@ -64,36 +64,29 @@ func (c *httpConnection) SetWriteDeadline(t time.Time) error {
 }
 
 func (s *HTTPTransport) ListenAndServe(addr string) error {
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
+	httpSrv := &stdhttp.Server{
+		Addr:    addr,
+		Handler: s.HTTPHandler(),
 	}
-	defer listener.Close()
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			return err
-		}
-		conn.SetReadDeadline(time.Now().Add(s.readDeadline))
-		conn.SetWriteDeadline(time.Now().Add(s.writeDeadline))
-		go s.ServeConn(conn)
-	}
+	return httpSrv.ListenAndServe()
 }
 
-func (s *HTTPTransport) ServeConn(conn server.Connection) error {
-	c := &httpConnection{conn}
+func (s *HTTPTransport) ServeConn(listener net.Listener) error {
 	srv := &stdhttp.Server{
 		Handler: s.HTTPHandler(),
 	}
-	l := &httpListener{Conn: c}
-	return srv.Serve(l)
+	return srv.Serve(listener)
 }
 
 func (s *HTTPTransport) HTTPHandler() stdhttp.Handler {
-	return stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Hello, World!")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Hello, World!"))
 	})
+
+	return mux
 }
 
 type httpListener struct {
@@ -110,7 +103,7 @@ func (l *httpListener) Accept() (net.Conn, error) {
 }
 
 func (l *httpListener) Close() error {
-	return l.Conn.Close()
+	return nil
 }
 
 func (l *httpListener) Addr() net.Addr {

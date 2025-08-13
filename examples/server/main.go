@@ -3,10 +3,8 @@ package main
 import (
 	"database/sql"
 	"log"
-	"net"
-	"net/http"
 
-	"github.com/pangobit/agent-sdk/pkg/server"
+	agentsdk "github.com/pangobit/agent-sdk/pkg"
 	"github.com/pangobit/agent-sdk/pkg/server/sqlite"
 	_ "modernc.org/sqlite"
 )
@@ -18,18 +16,7 @@ func main() {
 	}
 	defer db.Close()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, World!"))
-	})
+	server := agentsdk.NewServer(sqlite.WithSqliteRepository(db))
 
-	conn, err := net.Dial("tcp", "localhost:8080")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-
-	_ = server.NewServer(sqlite.WithSqliteRepository(db))
-
+	server.ListenAndServe(":8080")
 }
