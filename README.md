@@ -1,10 +1,25 @@
-# MCP, but not dumb
+# Agent SDK (In lieu of a clever name)
 
 ## Introduction
----This library is an opinionated take on MCP. More specifically, it provides MCP compatibility, but untangles the unnecesary jargon into a simple set of APIs that rely on standard API design pratcies. 
+The term "Agent" has many connotations based on context. In the context of this project, it refers to an application that leverages Large Language Models to perform fully or semi automated tasks.
 
-"Model Context Protocol" is probably the least descriptive possible name for what the standard is supposed to do. It is not strictly related to models or model context, and is not a protocol (but does specify protocols to use). 
+This library doesn't make assertions about the use case of said Agent, but it is being developed in the context of internal-facing tools, not end user-facing products.
 
-Ultimately, MCP, in practice, is a domain-specific API schema for LLM-dependent applications. It prescribes an RPC message format (JSON-RPC 2.0), required endpoints, and a few data structures representing "tools" and other resources.---
+### Purpose
+The Agent SDK provides functionality to embed a compliant server within your Go application that exposes tools and resources to Client Agent applications. 
 
-Nevermind, MCP sux
+Tools are simply functions that an Agent can call.
+Resources are data that an Agent can request to use as Context.
+
+### What about MCP?
+[Model Context Protocol](https://modelcontextprotocol.io/) is described in its documentation as being " like a USB-C port for AI applications."
+There has been a fairly high level of adoption of MCP across applications, however we have following points of contention with the approach:
+* We believe that the specification is unnecessary--such a standard for clients and servers communicating already exists in HTTP. 
+* The message framing and specifications for the "primitives" in the spec are verbose and rigid. Ironically, they use semi-structured messages instead of natural language.
+
+Having said that, a secondary goal of this library is to serve as a proxy for MCP connections to allow for interoperability with services that have elected the MCP as their standard.
+
+## Getting Started
+```
+Coming soon
+```

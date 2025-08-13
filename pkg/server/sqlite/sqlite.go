@@ -30,6 +30,14 @@ func WithDB(db *sql.DB) server.ServerOpts {
 	return server.WithToolRepository(repo)
 }
 
+const toolSchema = `
+CREATE TABLE IF NOT EXISTS tools (
+    name TEXT PRIMARY KEY,
+    description TEXT,
+    schema TEXT
+)
+`
+
 const getToolQuery = `
 SELECT name, description, schema FROM tools WHERE name = ?
 `
@@ -49,6 +57,11 @@ DELETE FROM tools WHERE name = ?
 const updateToolQuery = `
 UPDATE tools SET description = ?, schema = ? WHERE name = ?
 `
+
+func (r *SqliteRepository) Init() error {
+	_, err := r.db.Exec(toolSchema)
+	return err
+}
 
 func (r *SqliteRepository) GetTool(name string) (server.Tool, error) {
 	row := r.db.QueryRow(getToolQuery, name)
