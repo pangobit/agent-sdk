@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"reflect"
 )
 
@@ -11,7 +12,6 @@ type Connection interface {
 }
 
 type Server struct {
-	conn  Connection
 	tools ToolRepository
 }
 
@@ -29,6 +29,11 @@ func NewServer(opts ...ServerOpts) *Server {
 		opt(s)
 	}
 	return s
+}
+
+func (s *Server) Serve(conn Connection) {
+	defer conn.Close()
+
 }
 
 type Tool struct {
@@ -86,3 +91,13 @@ func (t *PromptTemplateArgument) String() string {
 }
 
 func (t *PromptTemplate) Invoke() {}
+
+func (s *Server) HTTPHandler(mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) ListenAndServe(addr string) error {
+	return http.ListenAndServe(addr, s.HTTPHandler(http.NewServeMux()))
+}
