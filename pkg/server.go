@@ -10,7 +10,7 @@ import (
 )
 
 // NewServer creates a new server with the default HTTP transport and sqlite based repository.
-// Pass in [dbopts] to use a custom database/repo pair.
+// Pass in [dbopts] to use a custom database/repo pair via [server.WithDB]
 func NewServer(context context.Context, dbopts server.ServerOpts, opts ...server.ServerOpts) *server.Server {
 	if dbopts == nil {
 		opts = append(opts, sqlite.WithDefaultDB())
