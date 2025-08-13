@@ -3,16 +3,20 @@ package server
 import (
 	"encoding/json"
 	"io"
-	"net/http"
 	"reflect"
 )
+
+type Transport interface {
+	ListenAndServe(addr string) error
+}
 
 type Connection interface {
 	io.ReadWriteCloser
 }
 
 type Server struct {
-	tools ToolRepository
+	tools     ToolRepository
+	transport Transport
 }
 
 type ServerOpts func(*Server)
@@ -20,6 +24,12 @@ type ServerOpts func(*Server)
 func WithToolRepository(repo ToolRepository) ServerOpts {
 	return func(s *Server) {
 		s.tools = repo
+	}
+}
+
+func WithTransport(transport Transport) ServerOpts {
+	return func(s *Server) {
+		s.transport = transport
 	}
 }
 
@@ -31,9 +41,14 @@ func NewServer(opts ...ServerOpts) *Server {
 	return s
 }
 
-func (s *Server) Serve(conn Connection) {
-	defer conn.Close()
+func (s *Server) HandleRequest(path string, reader io.Reader, writer io.Writer) error {
+	dec := json.NewDecoder(reader)
+	var req map[string]any
+	if err := dec.Decode(&req); err != nil {
+		return err
+	}
 
+	return nil
 }
 
 type Tool struct {
@@ -88,16 +103,4 @@ func (t *PromptTemplateArgument) String() string {
 		return ""
 	}
 	return string(renderedJSON)
-}
-
-func (t *PromptTemplate) Invoke() {}
-
-func (s *Server) HTTPHandler(mux *http.ServeMux) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mux.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) ListenAndServe(addr string) error {
-	return http.ListenAndServe(addr, s.HTTPHandler(http.NewServeMux()))
 }
