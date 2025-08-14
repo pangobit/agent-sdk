@@ -18,7 +18,8 @@ func NewServer(context context.Context, dbopts server.ServerOpts, opts ...server
 		opts = append(opts, dbopts)
 	}
 
-	t := http.NewHTTPTransport(http.WithReadDeadline(10*time.Second), http.WithWriteDeadline(10*time.Second))
+	t := http.NewHTTPTransport(http.WithReadDeadline(10*time.Second),
+		http.WithWriteDeadline(10*time.Second))
 	opts = append(opts, server.WithTransport(t))
 	return server.NewServer(opts...)
 }

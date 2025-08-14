@@ -16,9 +16,16 @@ type Connection interface {
 type Server struct {
 	tools     ToolRepository
 	transport Transport
+	path      string
 }
 
 type ServerOpts func(*Server)
+
+func WithPath(path string) ServerOpts {
+	return func(s *Server) {
+		s.path = path
+	}
+}
 
 func WithToolRepository(repo ToolRepository) ServerOpts {
 	return func(s *Server) {

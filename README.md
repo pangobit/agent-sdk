@@ -8,8 +8,6 @@ This library doesn't make assertions about the use case of said Agent, but it is
 ### Purpose
 The Agent SDK provides functionality to embed a compliant server within your Go application that exposes tools and resources to Client Agent applications. 
 
-Tools are simply functions that an Agent can call.
-Resources are data that an Agent can request to use as Context.
 
 ### What about MCP?
 [Model Context Protocol](https://modelcontextprotocol.io/) is described in its documentation as being " like a USB-C port for AI applications."

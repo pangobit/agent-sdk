@@ -12,6 +12,7 @@ import (
 type HTTPTransport struct {
 	readDeadline  time.Duration
 	writeDeadline time.Duration
+	basePath      string
 }
 
 type HTTPTransportOpts func(*HTTPTransport)
@@ -36,6 +37,12 @@ func WithWriteDeadline(d time.Duration) HTTPTransportOpts {
 	}
 }
 
+func WithPath(path string) HTTPTransportOpts {
+	return func(t *HTTPTransport) {
+		t.basePath = path
+	}
+}
+
 func (s *HTTPTransport) ListenAndServe(addr string) error {
 	httpSrv := &stdhttp.Server{
 		Addr:    addr,
@@ -46,12 +53,15 @@ func (s *HTTPTransport) ListenAndServe(addr string) error {
 
 func (s *HTTPTransport) HTTPHandler() stdhttp.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+	subroutes := http.NewServeMux()
+	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Hello, World!")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Hello, World!"))
 	})
 
+	mux.Handle("/", http.StripPrefix(s.basePath, subroutes))
+
 	return mux
 }
-

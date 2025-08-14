@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	agentsdk "github.com/pangobit/agent-sdk/pkg"
 	_ "modernc.org/sqlite"
@@ -10,5 +11,7 @@ import (
 func main() {
 	server := agentsdk.NewServer(context.Background(), nil)
 
+	// Agent server endpoints will be mounted at the domain root path by default
+	fmt.Println("serving on http://localhost:8080")
 	server.ListenAndServe(":8080")
 }
