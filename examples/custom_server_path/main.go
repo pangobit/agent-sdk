@@ -10,12 +10,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const pathOverride = "/my/path"
+const pathOverride = "/my/path/"
 
 func main() {
 	opts := []server.ServerOpts{
-		server.WithTransportOpts(
-			http.GetWithPathOption(pathOverride),
+		server.WithTransport(
+			http.NewHTTPTransport(
+				http.WithPath(pathOverride),
+			),
 		),
 	}
 	server := agentsdk.NewServer(context.Background(), nil, opts...)

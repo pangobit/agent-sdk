@@ -60,14 +60,6 @@ func (s *HTTPTransport) ListenAndServe(addr string) error {
 	return httpSrv.ListenAndServe()
 }
 
-type apiHandler struct {
-}
-
-func (apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Serving request for", r.URL.Path)
-	fmt.Println("url is ", r.URL.String())
-}
-
 func (s *HTTPTransport) HTTPHandler() http.Handler {
 	baseMux := http.NewServeMux()
 
