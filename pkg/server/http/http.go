@@ -5,7 +5,7 @@ package http
 import (
 	"fmt"
 	"net/http"
-	stdhttp "net/http"
+	"strings"
 	"time"
 
 	"github.com/pangobit/agent-sdk/pkg/server"
@@ -53,26 +53,42 @@ func GetWithPathOption(path string) server.TransportOpts {
 }
 
 func (s *HTTPTransport) ListenAndServe(addr string) error {
-	httpSrv := &stdhttp.Server{
+	httpSrv := &http.Server{
 		Addr:    addr,
 		Handler: s.HTTPHandler(),
 	}
 	return httpSrv.ListenAndServe()
 }
 
-func (s *HTTPTransport) HTTPHandler() stdhttp.Handler {
+type apiHandler struct {
+}
+
+func (apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Serving request for", r.URL.Path)
+	fmt.Println("url is ", r.URL.String())
+}
+
+func (s *HTTPTransport) HTTPHandler() http.Handler {
 	baseMux := http.NewServeMux()
 
 	subroutes := http.NewServeMux()
-	subroutes.HandleFunc("/hello/", func(w http.ResponseWriter, r *http.Request) {
+	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			fmt.Println("Home!")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Home!"))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Not Found!"))
+		}
+	})
+	subroutes.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Hello, World!")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Hello, World!"))
 	})
-
-	// Mount the subroutes at the specific base path
-	fmt.Println("Mounting subroutes at", s.basePath)
-	baseMux.Handle(s.basePath, http.StripPrefix(s.basePath, subroutes))
+	strippedHandler := http.StripPrefix(strings.TrimSuffix(s.basePath, "/"), subroutes)
+	baseMux.Handle(s.basePath, strippedHandler)
 
 	return baseMux
 }

@@ -16,7 +16,6 @@ type Connection interface {
 type Server struct {
 	tools     ToolRepository
 	transport Transport
-	path      string
 }
 
 type ServerOpts func(*Server)
