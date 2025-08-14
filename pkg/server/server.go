@@ -21,21 +21,20 @@ type Server struct {
 
 type ServerOpts func(*Server)
 
-func WithPath(path string) ServerOpts {
-	return func(s *Server) {
-		s.path = path
-	}
-}
-
 func WithToolRepository(repo ToolRepository) ServerOpts {
 	return func(s *Server) {
 		s.tools = repo
 	}
 }
 
-func WithTransport(transport Transport) ServerOpts {
+type TransportOpts func(Transport) Transport
+
+func WithTransport(transport Transport, opts ...TransportOpts) ServerOpts {
 	return func(s *Server) {
 		s.transport = transport
+		for _, opt := range opts {
+			s.transport = opt(s.transport)
+		}
 	}
 }
 

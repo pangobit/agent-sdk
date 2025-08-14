@@ -16,6 +16,7 @@ type JSONRPCTransport struct {
 	readDeadline  time.Duration
 	writeDeadline time.Duration
 	server        *jsonrpc.Server
+	basePath      string
 }
 
 type JSONRPCTransportOpts func(*JSONRPCTransport)
@@ -42,6 +43,12 @@ func WithWriteDeadline(d time.Duration) JSONRPCTransportOpts {
 	}
 }
 
+func WithPath(path string) JSONRPCTransportOpts {
+	return func(t *JSONRPCTransport) {
+		t.basePath = path
+	}
+}
+
 func (t *JSONRPCTransport) ListenAndServe(addr string) error {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -59,7 +66,9 @@ func (t *JSONRPCTransport) Register(rcvr any) error {
 // HTTPHandler provides an HTTP endpoint for JSON-RPC over HTTP
 func (t *JSONRPCTransport) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+	subroutes := http.NewServeMux()
+	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -85,6 +94,9 @@ func (t *JSONRPCTransport) HTTPHandler() http.Handler {
 
 		json.NewEncoder(w).Encode(response)
 	})
+
+	// Mount the subroutes at the specific base path
+	mux.Handle(t.basePath+"/", http.StripPrefix(t.basePath, subroutes))
 
 	return mux
 }

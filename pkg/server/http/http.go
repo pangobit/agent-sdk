@@ -7,6 +7,8 @@ import (
 	"net/http"
 	stdhttp "net/http"
 	"time"
+
+	"github.com/pangobit/agent-sdk/pkg/server"
 )
 
 type HTTPTransport struct {
@@ -43,6 +45,13 @@ func WithPath(path string) HTTPTransportOpts {
 	}
 }
 
+func GetWithPathOption(path string) server.TransportOpts {
+	return func(t server.Transport) server.Transport {
+		t.(*HTTPTransport).basePath = path
+		return t
+	}
+}
+
 func (s *HTTPTransport) ListenAndServe(addr string) error {
 	httpSrv := &stdhttp.Server{
 		Addr:    addr,
@@ -52,16 +61,18 @@ func (s *HTTPTransport) ListenAndServe(addr string) error {
 }
 
 func (s *HTTPTransport) HTTPHandler() stdhttp.Handler {
-	mux := http.NewServeMux()
+	baseMux := http.NewServeMux()
 
 	subroutes := http.NewServeMux()
-	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	subroutes.HandleFunc("/hello/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Hello, World!")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Hello, World!"))
 	})
 
-	mux.Handle("/", http.StripPrefix(s.basePath, subroutes))
+	// Mount the subroutes at the specific base path
+	fmt.Println("Mounting subroutes at", s.basePath)
+	baseMux.Handle(s.basePath, http.StripPrefix(s.basePath, subroutes))
 
-	return mux
+	return baseMux
 }
