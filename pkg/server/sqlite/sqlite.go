@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/pangobit/agent-sdk/pkg/server"
+	_ "modernc.org/sqlite"
 )
 
 const defaultDBPath = "agent.db"
