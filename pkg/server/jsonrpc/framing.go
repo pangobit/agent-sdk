@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"net/rpc"
 	"reflect"
 	"sync"
@@ -82,84 +81,6 @@ func (t *MessageFramingTransport) serveWithFraming(listener net.Listener) error 
 			})
 		}(conn)
 	}
-}
-
-// HTTPHandler provides an HTTP endpoint for JSON-RPC over HTTP with message framing
-func (t *MessageFramingTransport) HTTPHandler() http.Handler {
-	mux := http.NewServeMux()
-
-	subroutes := http.NewServeMux()
-	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Set content type for JSON-RPC
-		w.Header().Set("Content-Type", "application/json")
-
-		// Parse the JSON-RPC request
-		var req map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
-			return
-		}
-
-		// Extract method and parameters
-		method, ok := req["method"].(string)
-		if !ok {
-			http.Error(w, "missing method", http.StatusBadRequest)
-			return
-		}
-
-		// Handle message framing if there are parameters
-		if params, exists := req["params"]; exists {
-			// Convert params to JSON for processing
-			paramsJSON, err := json.Marshal(params)
-			if err != nil {
-				http.Error(w, "invalid parameters", http.StatusBadRequest)
-				return
-			}
-
-			// Use framing service to validate and transform messages
-			transformedMessages, err := t.framingService.ValidateAndTransformMessages(method, paramsJSON)
-			if err != nil {
-				// Return JSON-RPC error response
-				errorResponse := map[string]interface{}{
-					"jsonrpc": "2.0",
-					"id":      req["id"],
-					"error": map[string]interface{}{
-						"code":    -32602, // Invalid params
-						"message": fmt.Sprintf("Message validation failed: %v", err),
-					},
-				}
-				json.NewEncoder(w).Encode(errorResponse)
-				return
-			}
-
-			// Update the request with transformed messages
-			var transformedMessagesValue interface{}
-			if err := json.Unmarshal(transformedMessages, &transformedMessagesValue); err != nil {
-				http.Error(w, "message transformation failed", http.StatusInternalServerError)
-				return
-			}
-			req["params"] = transformedMessagesValue
-		}
-
-		// Simple echo response for now
-		response := map[string]interface{}{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"result":  "Hello from JSON-RPC over HTTP with message framing",
-		}
-
-		json.NewEncoder(w).Encode(response)
-	})
-
-	// Mount the subroutes at the specific base path
-	mux.Handle(t.basePath+"/", http.StripPrefix(t.basePath, subroutes))
-
-	return mux
 }
 
 // messageFramingCodec implements the rpc.ServerCodec interface with message framing
