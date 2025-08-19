@@ -109,7 +109,7 @@ func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
 
 	r.ServiceMethod = c.request.Method
 
-	// JSON-RPC 2.0 allows the ID to be a "number" (so stupid), a string, or null.
+	// JSON-RPC 2.0 allows the ID to be a "number", a string, or null.
 	// Go's rpc package expects a uint64, so, like the old json1.0 rpc package,
 	// we assign a uint64 and map it to the original for later.
 	c.mutex.Lock()
