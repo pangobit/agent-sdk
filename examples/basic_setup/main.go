@@ -3,10 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
-	"time"
 
-	"github.com/pangobit/agent-sdk/pkg/server/hybrid"
+	agentsdk "github.com/pangobit/agent-sdk/pkg"
 )
 
 // Simple service for testing
@@ -54,42 +52,48 @@ func (u *UserService) CreateUser(req CreateUserRequest, reply *User) error {
 }
 
 func main() {
-	// Create hybrid transport with default path /agents/api/v1/
-	transport := hybrid.NewHybridTransport(
-		hybrid.WithReadDeadline(10*time.Second),
-		hybrid.WithWriteDeadline(10*time.Second),
-	)
+	// Create default server with tool functionality
+	server := agentsdk.NewDefaultServer()
 
-	// Register services with the hybrid transport
-	transport.RegisterWithSchema(new(HelloService))
-	transport.RegisterWithSchema(new(UserService))
+	// Register tools with semantic descriptions
+	helloParams := map[string]interface{}{
+		"name": map[string]interface{}{
+			"type":        "string",
+			"description": "The name to greet",
+			"required":    true,
+		},
+	}
 
-	// Get the tool registry for manual tool registration
-	registry := transport.GetToolRegistry()
-
-	// Register tools with semantic descriptions using the builder pattern
-	helloParams := hybrid.NewParameterBuilder().
-		String("name", "The name to greet").
-		Build()
-
-	registry.RegisterMethod("HelloService", "Hello",
+	server.RegisterMethod("HelloService", "Hello",
 		"Sends a greeting message to the specified name", helloParams)
 
 	// Register user creation tool
-	userParams := hybrid.NewParameterBuilder().
-		String("name", "Full name of the user to create").
-		String("email", "Email address for the user account").
-		Number("age", "Age of the user in years").
-		Build()
+	userParams := map[string]interface{}{
+		"name": map[string]interface{}{
+			"type":        "string",
+			"description": "Full name of the user to create",
+			"required":    true,
+		},
+		"email": map[string]interface{}{
+			"type":        "string",
+			"description": "Email address for the user account",
+			"required":    true,
+		},
+		"age": map[string]interface{}{
+			"type":        "number",
+			"description": "Age of the user in years",
+			"required":    true,
+		},
+	}
 
-	registry.RegisterMethod("UserService", "CreateUser",
+	server.RegisterMethod("UserService", "CreateUser",
 		"Creates a new user account with the provided information", userParams)
 
-	fmt.Println("serving hybrid transport on http://localhost:8080/agents/api/v1/")
+	fmt.Println("serving API on http://localhost:8080/agents/api/v1/")
 	fmt.Println("Available endpoints:")
 	fmt.Println("  GET  /agents/api/v1/tools   - Tool discovery")
 	fmt.Println("  POST /agents/api/v1/execute - Tool execution")
 
 	// Start the server
-	log.Fatal(http.ListenAndServe(":8080", transport.HTTPHandler()))
+	log.Fatal(server.ListenAndServe(":8080"))
 }

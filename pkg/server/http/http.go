@@ -3,18 +3,16 @@
 package http
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/pangobit/agent-sdk/pkg/server"
 )
 
 type HTTPTransport struct {
 	readDeadline  time.Duration
 	writeDeadline time.Duration
 	basePath      string
+	toolHandler   http.Handler // Tool handler injected via options
 }
 
 type HTTPTransportOpts func(*HTTPTransport)
@@ -45,10 +43,10 @@ func WithPath(path string) HTTPTransportOpts {
 	}
 }
 
-func GetWithPathOption(path string) server.TransportOpts {
-	return func(t server.Transport) server.Transport {
-		t.(*HTTPTransport).basePath = path
-		return t
+// WithToolHandler sets the tool handler for tool-related endpoints
+func WithToolHandler(handler http.Handler) HTTPTransportOpts {
+	return func(t *HTTPTransport) {
+		t.toolHandler = handler
 	}
 }
 
@@ -66,19 +64,20 @@ func (s *HTTPTransport) HTTPHandler() http.Handler {
 	subroutes := http.NewServeMux()
 	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			fmt.Println("Home!")
+			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Home!"))
+			w.Write([]byte("Tool Service API - Use /tools for discovery"))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("Not Found!"))
 		}
 	})
-	subroutes.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Hello, World!")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, World!"))
-	})
+
+	// If we have a tool handler, use it for tool-related routes
+	if s.toolHandler != nil {
+		subroutes.Handle("/tools", s.toolHandler)
+	}
+
 	strippedHandler := http.StripPrefix(strings.TrimSuffix(s.basePath, "/"), subroutes)
 	baseMux.Handle(s.basePath, strippedHandler)
 

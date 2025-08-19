@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -14,6 +13,6 @@ func main() {
 	})
 	go http.ListenAndServe(":8080", nil)
 
-	agentServer := agentsdk.NewDefaultServer(context.Background())
+	agentServer := agentsdk.NewDefaultServer()
 	agentServer.ListenAndServe(":8081")
 }

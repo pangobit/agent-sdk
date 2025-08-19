@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
 	agentsdk "github.com/pangobit/agent-sdk/pkg"
@@ -10,9 +9,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const pathOverride = "/my/path/"
-
 func main() {
+	pathOverride := "/my/path/"
 	opts := []server.ServerOpts{
 		server.WithTransport(
 			http.NewHTTPTransport(
@@ -20,9 +18,8 @@ func main() {
 			),
 		),
 	}
-	server := agentsdk.NewServer(context.Background(), nil, opts...)
+	server := agentsdk.NewServer(opts...)
 
-	// Agent server endpoints will be mounted at http://localhost:8080/my/path
-	fmt.Println("serving on http://localhost:8080/my/path")
+	fmt.Println("serving on http://localhost:8080" + pathOverride)
 	server.ListenAndServe(":8080")
 }
