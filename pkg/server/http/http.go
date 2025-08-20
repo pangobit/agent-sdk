@@ -8,15 +8,17 @@ import (
 	"time"
 )
 
+// HTTPTransport implements the [server.Transport interface
 type HTTPTransport struct {
 	readDeadline  time.Duration
 	writeDeadline time.Duration
 	basePath      string
-	toolHandler   http.Handler // Tool handler injected via options
+	toolHandler   http.Handler
 }
 
 type HTTPTransportOpts func(*HTTPTransport)
 
+// NewHTTPTransport creates a new HTTP transport and applies the given options
 func NewHTTPTransport(opts ...HTTPTransportOpts) *HTTPTransport {
 	t := &HTTPTransport{}
 	for _, opt := range opts {
@@ -25,31 +27,44 @@ func NewHTTPTransport(opts ...HTTPTransportOpts) *HTTPTransport {
 	return t
 }
 
+// WithReadDeadline sets the read deadline for the HTTP transport
+// the read deadline is the maximum amount of time a request can take to be read before
+// the request is timed out
 func WithReadDeadline(d time.Duration) HTTPTransportOpts {
 	return func(t *HTTPTransport) {
 		t.readDeadline = d
 	}
 }
 
+// WithWriteDeadline sets the write deadline for the HTTP transport
+// the write deadline is the maximum amount of time a response can take to be written before
+// the response is timed out
 func WithWriteDeadline(d time.Duration) HTTPTransportOpts {
 	return func(t *HTTPTransport) {
 		t.writeDeadline = d
 	}
 }
 
+// WithPath sets the base path for the HTTP transport
+// the base path is the path that the HTTP transport will be mounted at
+// E.g., if the base path is "/my/path", the HTTP transport will be mounted
+// at "http://localhost:8080/my/path" (assuming the server is running on port 8080)
 func WithPath(path string) HTTPTransportOpts {
 	return func(t *HTTPTransport) {
 		t.basePath = path
 	}
 }
 
-// WithToolHandler sets the tool handler for tool-related endpoints
+// WithToolHandler sets the tool http handler for tool-related endpoints
 func WithToolHandler(handler http.Handler) HTTPTransportOpts {
 	return func(t *HTTPTransport) {
 		t.toolHandler = handler
 	}
 }
 
+// ListenAndServe starts the HTTP transport and listens for incoming requests
+// the addr is the address to listen on
+// E.g., if the addr is ":8080", the HTTP transport will listen on port 8080
 func (s *HTTPTransport) ListenAndServe(addr string) error {
 	httpSrv := &http.Server{
 		Addr:    addr,
@@ -58,6 +73,9 @@ func (s *HTTPTransport) ListenAndServe(addr string) error {
 	return httpSrv.ListenAndServe()
 }
 
+// HTTPHandler returns the HTTP handler for the HTTP transport
+// the handler is a mux that handles the base path and agent-related endpoints
+// the base path is the path that the HTTP transport will be mounted at
 func (s *HTTPTransport) HTTPHandler() http.Handler {
 	baseMux := http.NewServeMux()
 
@@ -73,7 +91,6 @@ func (s *HTTPTransport) HTTPHandler() http.Handler {
 		}
 	})
 
-	// If we have a tool handler, use it for tool-related routes
 	if s.toolHandler != nil {
 		subroutes.Handle("/tools", s.toolHandler)
 	}
