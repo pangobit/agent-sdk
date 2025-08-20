@@ -55,59 +55,52 @@ func main() {
 	// Create default server with tool functionality
 	server := agentsdk.NewDefaultServer()
 
-	// Register services with the method executor
-	helloService := &HelloService{}
-	userService := &UserService{}
+	// Register services - these are the actual Go types with methods
+	// that can be called via JSON-RPC at the /execute endpoint
+	agentsdk.RegisterService(server, &HelloService{})
+	agentsdk.RegisterService(server, &UserService{})
 
-	// Get the method executor and register services
-	methodExecutor := server.GetMethodExecutor()
-	if methodExecutor != nil {
-		if directExecutor, ok := methodExecutor.(interface{ RegisterService(interface{}) error }); ok {
-			directExecutor.RegisterService(helloService)
-			directExecutor.RegisterService(userService)
-		}
-	}
-
-	// Register tools with semantic descriptions
-	helloParams := map[string]interface{}{
-		"name": map[string]interface{}{
+	// Describe service methods for tool discovery - these create descriptions
+	// that are available at the /tools endpoint so clients know what methods exist
+	helloParams := map[string]any{
+		"name": map[string]any{
 			"type":        "string",
 			"description": "The name to greet",
 			"required":    true,
 		},
 	}
 
-	server.RegisterMethod("HelloService", "Hello",
+	agentsdk.DescribeServiceMethod(server, "HelloService", "Hello",
 		"Sends a greeting message to the specified name", helloParams)
 
-	// Register user creation tool
-	userParams := map[string]interface{}{
-		"name": map[string]interface{}{
+	// Describe user creation method
+	userParams := map[string]any{
+		"name": map[string]any{
 			"type":        "string",
 			"description": "Full name of the user to create",
 			"required":    true,
 		},
-		"email": map[string]interface{}{
+		"email": map[string]any{
 			"type":        "string",
 			"description": "Email address for the user account",
 			"required":    true,
 		},
-		"age": map[string]interface{}{
+		"age": map[string]any{
 			"type":        "number",
 			"description": "Age of the user in years",
 			"required":    true,
 		},
 	}
 
-	server.RegisterMethod("UserService", "CreateUser",
+	agentsdk.DescribeServiceMethod(server, "UserService", "CreateUser",
 		"Creates a new user account with the provided information", userParams)
 
 	fmt.Println("serving API on http://localhost:8080/agents/api/v1/")
 	fmt.Println("Available endpoints:")
-	fmt.Println("  GET  /agents/api/v1/tools   - Tool discovery")
-	fmt.Println("  POST /agents/api/v1/execute - Tool execution")
+	fmt.Println("  GET  /agents/api/v1/tools   - Tool discovery (descriptions of available methods)")
+	fmt.Println("  POST /agents/api/v1/execute - Method execution (call the actual service methods)")
 	fmt.Println("")
-	fmt.Println("Example tool execution:")
+	fmt.Println("Example method execution:")
 	fmt.Println(`curl -X POST http://localhost:8080/agents/api/v1/execute \
 		-H "Content-Type: application/json" \
 		-d '{

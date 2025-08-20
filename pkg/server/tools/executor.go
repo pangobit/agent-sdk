@@ -6,32 +6,45 @@ import (
 	"strings"
 )
 
-// DirectMethodExecutor implements MethodExecutor by directly calling registered services
-type DirectMethodExecutor struct {
-	services map[string]interface{}
+// ServiceRegistry defines the interface for service registration
+type ServiceRegistry interface {
+	Register(service any) error
 }
 
-// NewDirectMethodExecutor creates a new direct method executor
-func NewDirectMethodExecutor() *DirectMethodExecutor {
-	return &DirectMethodExecutor{
-		services: make(map[string]interface{}),
+// JSONRPCMethodExecutor implements MethodExecutor using a service registry
+type JSONRPCMethodExecutor struct {
+	registry ServiceRegistry
+	services map[string]any
+}
+
+// NewJSONRPCMethodExecutor creates a new JSON-RPC method executor
+func NewJSONRPCMethodExecutor(registry ServiceRegistry) *JSONRPCMethodExecutor {
+	return &JSONRPCMethodExecutor{
+		registry: registry,
+		services: make(map[string]any),
 	}
 }
 
-// RegisterService registers a service with the executor
-func (e *DirectMethodExecutor) RegisterService(service interface{}) error {
+// RegisterService registers a service with the registry
+func (e *JSONRPCMethodExecutor) RegisterService(service any) error {
+	// Register with registry for validation
+	if err := e.registry.Register(service); err != nil {
+		return err
+	}
+
+	// Also store locally for direct access
 	serviceType := reflect.TypeOf(service)
-	// Handle pointer types by getting the element type name
 	if serviceType.Kind() == reflect.Ptr {
 		serviceType = serviceType.Elem()
 	}
 	serviceName := serviceType.Name()
 	e.services[serviceName] = service
+
 	return nil
 }
 
 // ExecuteMethod executes a method by directly calling the registered service
-func (e *DirectMethodExecutor) ExecuteMethod(serviceName, methodName string, params map[string]interface{}) (interface{}, error) {
+func (e *JSONRPCMethodExecutor) ExecuteMethod(serviceName, methodName string, params map[string]interface{}) (interface{}, error) {
 	// Get the service
 	service, exists := e.services[serviceName]
 	if !exists {
@@ -81,7 +94,7 @@ func (e *DirectMethodExecutor) ExecuteMethod(serviceName, methodName string, par
 }
 
 // mapToStruct converts a map to a struct using reflection
-func (e *DirectMethodExecutor) mapToStruct(m map[string]interface{}, v reflect.Value) error {
+func (e *JSONRPCMethodExecutor) mapToStruct(m map[string]interface{}, v reflect.Value) error {
 	if v.Kind() != reflect.Struct {
 		return fmt.Errorf("target must be a struct")
 	}
@@ -114,7 +127,7 @@ func (e *DirectMethodExecutor) mapToStruct(m map[string]interface{}, v reflect.V
 }
 
 // setFieldValue sets a field value with type conversion
-func (e *DirectMethodExecutor) setFieldValue(field reflect.Value, value interface{}) error {
+func (e *JSONRPCMethodExecutor) setFieldValue(field reflect.Value, value interface{}) error {
 	fieldType := field.Type()
 
 	// Handle different types
