@@ -1,0 +1,286 @@
+---
+alwaysApply: false 
+description: Comprehensive Go testing standards and patterns for writing high-quality unit tests
+---
+# Go Testing Standards
+
+## Test Structure and Organization
+
+### File Naming
+- Test files must be named `*_test.go` in the same directory as the code being tested
+- Test files should be organized by component (e.g., `service_test.go`, `executor_test.go`, `handler_test.go`)
+
+### Package Declaration
+- Test files should use the same package as the code being tested (not `package main`)
+- This allows testing of unexported functions and internal state
+
+### Test Function Naming
+- Test functions must be named `Test<FunctionName>` or `Test<TypeName>_<MethodName>`
+- Use descriptive names that indicate what is being tested
+- Examples: `TestNewToolService`, `TestJSONRPCMethodExecutor_ExecuteMethod`
+
+## Table-Driven Tests
+
+### Structure
+Always use table-driven tests for comprehensive coverage:
+
+```go
+func TestFunctionName(t *testing.T) {
+    tests := []struct {
+        name           string
+        input          InputType
+        expectedOutput OutputType
+        expectedError  bool
+    }{
+        {
+            name:           "valid_input",
+            input:          validInput,
+            expectedOutput: expectedResult,
+            expectedError:  false,
+        },
+        {
+            name:           "invalid_input",
+            input:          invalidInput,
+            expectedOutput: nil,
+            expectedError:  true,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result, err := FunctionName(tt.input)
+            
+            if tt.expectedError && err == nil {
+                t.Error("expected error but got none")
+            }
+            if !tt.expectedError && err != nil {
+                t.Errorf("unexpected error: %v", err)
+            }
+            
+            // Verify result for successful cases
+            if !tt.expectedError && err == nil {
+                // Add result verification logic
+            }
+        })
+    }
+}
+```
+
+### Test Case Naming
+- Use descriptive, lowercase names with underscores
+- Examples: `valid_input`, `invalid_json`, `missing_required_field`, `nil_pointer`
+
+## Mock Objects and Dependencies
+
+### Mock Implementation Pattern
+Create mock objects for dependencies:
+
+```go
+// MockServiceRegistry implements ServiceRegistry for testing
+type MockServiceRegistry struct {
+    services      map[string]any
+    registerError error
+}
+
+func NewMockServiceRegistry() *MockServiceRegistry {
+    return &MockServiceRegistry{
+        services: make(map[string]any),
+    }
+}
+
+func (m *MockServiceRegistry) Register(service any) error {
+    if m.registerError != nil {
+        return m.registerError
+    }
+    // Implementation for testing
+    return nil
+}
+```
+
+### Mock Configuration
+- Allow mocks to be configured for different test scenarios
+- Use fields to control behavior (e.g., `registerError`, `executeError`)
+- Track method calls for verification
+
+## HTTP Testing
+
+### Using httptest
+For HTTP handlers, use `httptest` package:
+
+```go
+func TestHandler_ServeHTTP(t *testing.T) {
+    tests := []struct {
+        name           string
+        method         string
+        requestBody    map[string]interface{}
+        expectedStatus int
+        expectedBody   map[string]interface{}
+    }{
+        // Test cases
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // Create request body
+            body, err := json.Marshal(tt.requestBody)
+            if err != nil {
+                t.Fatalf("failed to marshal request body: %v", err)
+            }
+            
+            // Create request
+            req := httptest.NewRequest(tt.method, "/endpoint", bytes.NewReader(body))
+            req.Header.Set("Content-Type", "application/json")
+            w := httptest.NewRecorder()
+            
+            // Call handler
+            handler.ServeHTTP(w, req)
+            
+            // Verify status code
+            if w.Code != tt.expectedStatus {
+                t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
+            }
+            
+            // Verify response for successful requests
+            if tt.expectedStatus == http.StatusOK {
+                contentType := w.Header().Get("Content-Type")
+                if contentType != "application/json" {
+                    t.Errorf("expected content type application/json, got %s", contentType)
+                }
+                
+                // Parse and verify response body
+                var response map[string]interface{}
+                if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+                    t.Fatalf("failed to unmarshal response: %v", err)
+                }
+                
+                // Add response verification logic
+            }
+        })
+    }
+}
+```
+
+## Error Testing
+
+### Error Handling Patterns
+- Always test both success and error cases
+- Verify error messages when appropriate
+- Test edge cases that should produce errors
+
+```go
+// Test error cases
+if tt.expectedError && err == nil {
+    t.Error("expected error but got none")
+}
+if !tt.expectedError && err != nil {
+    t.Errorf("unexpected error: %v", err)
+}
+if tt.expectedError && err != nil && tt.errorMessage != "" {
+    if err.Error() != tt.errorMessage {
+        t.Errorf("expected error message '%s', got '%s'", tt.errorMessage, err.Error())
+    }
+}
+```
+
+## Type Safety and Assertions
+
+### Type Assertions
+Handle type assertions safely:
+
+```go
+// Safe type assertion with error handling
+if response, ok := result.(ExpectedType); ok {
+    // Verify response properties
+    if response.Property != expectedValue {
+        t.Errorf("expected property %v, got %v", expectedValue, response.Property)
+    }
+} else {
+    t.Error("result is not of expected type")
+}
+```
+
+### Handling Different Types
+For tests that handle multiple types:
+
+```go
+// Handle both int and float64 values in params
+var a, b int
+if aVal, ok := tt.params["a"].(int); ok {
+    a = aVal
+} else if aVal, ok := tt.params["a"].(float64); ok {
+    a = int(aVal)
+} else {
+    t.Errorf("unexpected type for param 'a': %T", tt.params["a"])
+    return
+}
+```
+
+## Test Coverage and Quality
+
+### Coverage Requirements
+- Test all public functions and methods
+- Test error paths and edge cases
+- Test concurrent access where applicable
+
+### Test Quality Checklist
+- [ ] Each test focuses on a single unit of work
+- [ ] Tests are independent and can run in any order
+- [ ] Tests use descriptive names that explain the scenario
+- [ ] Error cases are properly tested
+- [ ] Edge cases and boundary conditions are covered
+- [ ] Mock objects are used for external dependencies
+- [ ] HTTP tests verify status codes, headers, and response bodies
+- [ ] Type safety is maintained in assertions
+- [ ] Tests pass with `-race` flag for concurrent code
+
+## Running Tests
+
+### Commands
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with verbose output
+go test -v ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run tests with race detection
+go test -race ./...
+
+# Run specific test
+go test -v -run TestFunctionName
+
+# Run tests in specific package
+go test -v ./pkg/server/tools
+```
+
+### Test Output
+- Tests should provide clear, actionable error messages
+- Use `t.Errorf` with descriptive messages including expected vs actual values
+- Use `t.Fatalf` for setup failures that prevent test execution
+
+## Best Practices
+
+### Do's
+- ✅ Use table-driven tests for comprehensive coverage
+- ✅ Create mock objects for dependencies
+- ✅ Test both success and error paths
+- ✅ Use descriptive test names
+- ✅ Verify HTTP status codes, headers, and response bodies
+- ✅ Handle type assertions safely
+- ✅ Test edge cases and boundary conditions
+- ✅ Use `t.Run` for subtests
+
+### Don'ts
+- ❌ Don't test implementation details (test behavior, not structure)
+- ❌ Don't use global state in tests
+- ❌ Don't skip error checking in tests
+- ❌ Don't use hardcoded values without explanation
+- ❌ Don't test multiple unrelated things in a single test
+- ❌ Don't ignore race conditions in concurrent code
+description:
+globs:
+alwaysApply: false
+---
