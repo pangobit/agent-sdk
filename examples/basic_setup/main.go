@@ -55,6 +55,19 @@ func main() {
 	// Create default server with tool functionality
 	server := agentsdk.NewDefaultServer()
 
+	// Register services with the method executor
+	helloService := &HelloService{}
+	userService := &UserService{}
+
+	// Get the method executor and register services
+	methodExecutor := server.GetMethodExecutor()
+	if methodExecutor != nil {
+		if directExecutor, ok := methodExecutor.(interface{ RegisterService(interface{}) error }); ok {
+			directExecutor.RegisterService(helloService)
+			directExecutor.RegisterService(userService)
+		}
+	}
+
 	// Register tools with semantic descriptions
 	helloParams := map[string]interface{}{
 		"name": map[string]interface{}{
@@ -93,6 +106,16 @@ func main() {
 	fmt.Println("Available endpoints:")
 	fmt.Println("  GET  /agents/api/v1/tools   - Tool discovery")
 	fmt.Println("  POST /agents/api/v1/execute - Tool execution")
+	fmt.Println("")
+	fmt.Println("Example tool execution:")
+	fmt.Println(`curl -X POST http://localhost:8080/agents/api/v1/execute \
+		-H "Content-Type: application/json" \
+		-d '{
+			"jsonrpc": "2.0",
+			"method": "HelloService.Hello",
+			"params": {"name": "World"},
+			"id": 1
+		}'`)
 
 	// Start the server
 	log.Fatal(server.ListenAndServe(":8080"))

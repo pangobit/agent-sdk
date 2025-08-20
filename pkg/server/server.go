@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -18,9 +19,15 @@ type ToolRegistry interface {
 	RegisterMethod(serviceName, methodName, description string, parameters map[string]interface{}) error
 }
 
+// MethodExecutor defines the interface for executing methods
+type MethodExecutor interface {
+	ExecuteMethod(serviceName, methodName string, params map[string]interface{}) (interface{}, error)
+}
+
 type Server struct {
-	transport    Transport
-	toolRegistry ToolRegistry
+	transport      Transport
+	toolRegistry   ToolRegistry
+	methodExecutor MethodExecutor
 }
 
 type ServerOpts func(*Server)
@@ -42,6 +49,12 @@ func WithToolRegistry(registry ToolRegistry) ServerOpts {
 	}
 }
 
+func WithMethodExecutor(executor MethodExecutor) ServerOpts {
+	return func(s *Server) {
+		s.methodExecutor = executor
+	}
+}
+
 func NewServer(opts ...ServerOpts) *Server {
 	s := &Server{}
 	for _, opt := range opts {
@@ -60,6 +73,11 @@ func (s *Server) GetToolRegistry() ToolRegistry {
 	return s.toolRegistry
 }
 
+// GetMethodExecutor returns the method executor
+func (s *Server) GetMethodExecutor() MethodExecutor {
+	return s.methodExecutor
+}
+
 // RegisterService registers a service with the underlying transport if it supports service registration
 func (s *Server) RegisterService(service any) error {
 	if hybridTransport, ok := s.transport.(interface{ RegisterWithSchema(interface{}) error }); ok {
@@ -74,6 +92,14 @@ func (s *Server) RegisterMethod(serviceName, methodName, description string, par
 		return s.toolRegistry.RegisterMethod(serviceName, methodName, description, parameters)
 	}
 	return nil
+}
+
+// ExecuteMethod executes a method through the method executor
+func (s *Server) ExecuteMethod(serviceName, methodName string, params map[string]interface{}) (interface{}, error) {
+	if s.methodExecutor != nil {
+		return s.methodExecutor.ExecuteMethod(serviceName, methodName, params)
+	}
+	return nil, fmt.Errorf("no method executor configured")
 }
 
 // HTTPHandler returns the HTTP handler if the transport supports it

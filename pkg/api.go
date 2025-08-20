@@ -13,19 +13,27 @@ func NewDefaultServer() *server.Server {
 	// Create tool service for method registration
 	toolService := tools.NewToolService()
 
-	// Create HTTP transport with tool handler
+	// Create method executor for method execution
+	methodExecutor := tools.NewDirectMethodExecutor()
+
+	// Create method execution handler
+	methodHandler := tools.NewMethodExecutionHandler(methodExecutor)
+
+	// Create HTTP transport with tool handler and method handler
 	httpOpts := []http.HTTPTransportOpts{
 		http.WithPath("/agents/api/v1/"),
 		http.WithReadDeadline(10 * time.Second),
 		http.WithWriteDeadline(10 * time.Second),
 		http.WithToolHandler(toolService.ToolDiscoveryHandler()),
+		http.WithMethodHandler(methodHandler),
 	}
 	httpTransport := http.NewHTTPTransport(httpOpts...)
 
-	// Create server with HTTP transport and tool registry
+	// Create server with HTTP transport, tool registry, and method executor
 	serverOpts := []server.ServerOpts{
 		server.WithTransport(httpTransport),
 		server.WithToolRegistry(toolService),
+		server.WithMethodExecutor(methodExecutor),
 	}
 	return server.NewServer(serverOpts...)
 }

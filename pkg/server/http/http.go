@@ -14,6 +14,7 @@ type HTTPTransport struct {
 	writeDeadline time.Duration
 	basePath      string
 	toolHandler   http.Handler
+	methodHandler http.Handler
 }
 
 type HTTPTransportOpts func(*HTTPTransport)
@@ -62,6 +63,13 @@ func WithToolHandler(handler http.Handler) HTTPTransportOpts {
 	}
 }
 
+// WithMethodHandler sets the method execution handler
+func WithMethodHandler(handler http.Handler) HTTPTransportOpts {
+	return func(t *HTTPTransport) {
+		t.methodHandler = handler
+	}
+}
+
 // ListenAndServe starts the HTTP transport and listens for incoming requests
 // the addr is the address to listen on
 // E.g., if the addr is ":8080", the HTTP transport will listen on port 8080
@@ -84,7 +92,7 @@ func (s *HTTPTransport) HTTPHandler() http.Handler {
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Tool Service API - Use /tools for discovery"))
+			w.Write([]byte("Tool Service API - Use /tools for discovery, /execute for method calls"))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("Not Found!"))
@@ -93,6 +101,10 @@ func (s *HTTPTransport) HTTPHandler() http.Handler {
 
 	if s.toolHandler != nil {
 		subroutes.Handle("/tools", s.toolHandler)
+	}
+
+	if s.methodHandler != nil {
+		subroutes.Handle("/execute", s.methodHandler)
 	}
 
 	strippedHandler := http.StripPrefix(strings.TrimSuffix(s.basePath, "/"), subroutes)
