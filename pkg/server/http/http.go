@@ -49,7 +49,7 @@ func WithWriteDeadline(d time.Duration) HTTPTransportOpts {
 // WithPath sets the base path for the HTTP transport
 // the base path is the path that the HTTP transport will be mounted at
 // E.g., if the base path is "/my/path", the HTTP transport will be mounted
-// at "http://localhost:8080/my/path" (assuming the server is running on port 8080)
+// at "http://host:8080/my/path" (assuming the server is running on port 8080)
 func WithPath(path string) HTTPTransportOpts {
 	return func(t *HTTPTransport) {
 		t.basePath = path
@@ -75,9 +75,12 @@ func WithMethodHandler(handler http.Handler) HTTPTransportOpts {
 // E.g., if the addr is ":8080", the HTTP transport will listen on port 8080
 func (s *HTTPTransport) ListenAndServe(addr string) error {
 	httpSrv := &http.Server{
-		Addr:    addr,
-		Handler: s.HTTPHandler(),
+		Addr:         addr,
+		Handler:      s.HTTPHandler(),
+		ReadTimeout:  s.readDeadline,
+		WriteTimeout: s.writeDeadline,
 	}
+
 	return httpSrv.ListenAndServe()
 }
 
@@ -85,9 +88,34 @@ func (s *HTTPTransport) ListenAndServe(addr string) error {
 // the handler is a mux that handles the base path and agent-related endpoints
 // the base path is the path that the HTTP transport will be mounted at
 func (s *HTTPTransport) HTTPHandler() http.Handler {
+	// Create subroutes with common handlers
+	subroutes := s.createSubroutes()
+
+	// If no base path is set, return the subroutes directly
+	if s.basePath == "" {
+		return subroutes
+	}
+
+	// If base path is set, use the full routing logic
 	baseMux := http.NewServeMux()
 
+	// Handle the base path with proper prefix stripping
+	basePath := strings.TrimSuffix(s.basePath, "/")
+	if basePath == "" {
+		basePath = "/"
+	}
+
+	strippedHandler := http.StripPrefix(basePath, subroutes)
+	baseMux.Handle(basePath+"/", strippedHandler)
+
+	return baseMux
+}
+
+// createSubroutes creates the subroutes with common handlers
+func (s *HTTPTransport) createSubroutes() http.Handler {
 	subroutes := http.NewServeMux()
+
+	// Root handler
 	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/plain")
@@ -99,16 +127,15 @@ func (s *HTTPTransport) HTTPHandler() http.Handler {
 		}
 	})
 
+	// Tool discovery handler
 	if s.toolHandler != nil {
 		subroutes.Handle("/tools", s.toolHandler)
 	}
 
+	// Method execution handler
 	if s.methodHandler != nil {
 		subroutes.Handle("/execute", s.methodHandler)
 	}
 
-	strippedHandler := http.StripPrefix(strings.TrimSuffix(s.basePath, "/"), subroutes)
-	baseMux.Handle(s.basePath, strippedHandler)
-
-	return baseMux
+	return subroutes
 }
