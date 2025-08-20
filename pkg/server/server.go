@@ -87,15 +87,15 @@ func (s *Server) RegisterService(service any) error {
 }
 
 // RegisterMethod registers a method as a tool
-func (s *Server) RegisterMethod(serviceName, methodName, description string, parameters map[string]interface{}) error {
-	if s.toolRegistry != nil {
-		return s.toolRegistry.RegisterMethod(serviceName, methodName, description, parameters)
+func (s *Server) RegisterMethod(serviceName, methodName, description string, parameters map[string]any) error {
+	if s.toolRegistry == nil {
+		return fmt.Errorf("tool registry not configured")
 	}
-	return nil
+	return s.toolRegistry.RegisterMethod(serviceName, methodName, description, parameters)
 }
 
 // ExecuteMethod executes a method through the method executor
-func (s *Server) ExecuteMethod(serviceName, methodName string, params map[string]interface{}) (interface{}, error) {
+func (s *Server) ExecuteMethod(serviceName, methodName string, params map[string]any) (any, error) {
 	if s.methodExecutor != nil {
 		return s.methodExecutor.ExecuteMethod(serviceName, methodName, params)
 	}
