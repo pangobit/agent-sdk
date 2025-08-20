@@ -34,11 +34,13 @@ func (s *Server) Serve(listener net.Listener) error {
 		if err != nil {
 			return err
 		}
-		go s.server.ServeCodec(&serverCodec{
-			decoder: json.NewDecoder(conn),
-			encoder: json.NewEncoder(conn),
-			closer:  conn,
-			pending: make(map[uint64]*json.RawMessage),
-		})
+		go func(conn net.Conn) {
+			s.server.ServeCodec(&serverCodec{
+				decoder: json.NewDecoder(conn),
+				encoder: json.NewEncoder(conn),
+				closer:  conn,
+				pending: make(map[uint64]*json.RawMessage),
+			})
+		}(conn)
 	}
 }
