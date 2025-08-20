@@ -52,7 +52,7 @@ func (u *UserService) CreateUser(req CreateUserRequest, reply *User) error {
 }
 
 func main() {
-	// Create default server with tool functionality
+	// Create default server
 	server := agentsdk.NewDefaultServer()
 
 	// Register services - these are the actual Go types with methods

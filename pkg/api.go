@@ -1,3 +1,8 @@
+// Package agentsdk provides a set of APIs for building agents.
+
+// Author: Pangobit, LLC
+// License: MIT
+
 package agentsdk
 
 import (
