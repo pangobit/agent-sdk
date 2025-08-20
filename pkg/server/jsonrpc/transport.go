@@ -1,4 +1,5 @@
-// parameter_framing.go provides composition APIs to integrate message framing with JSON-RPC transport
+// transport.go provides a JSON-RPC 2.0 transport with
+// framing for our internal message structure
 package jsonrpc
 
 import (

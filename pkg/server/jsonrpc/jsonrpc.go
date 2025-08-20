@@ -3,10 +3,8 @@
 package jsonrpc
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/pangobit/agent-sdk/pkg/jsonrpc"
@@ -61,42 +59,4 @@ func (t *JSONRPCTransport) ListenAndServe(addr string) error {
 
 func (t *JSONRPCTransport) Register(rcvr any) error {
 	return t.server.Register(rcvr)
-}
-
-// HTTPHandler provides an HTTP endpoint for JSON-RPC over HTTP
-func (t *JSONRPCTransport) HTTPHandler() http.Handler {
-	mux := http.NewServeMux()
-
-	subroutes := http.NewServeMux()
-	subroutes.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Set content type for JSON-RPC
-		w.Header().Set("Content-Type", "application/json")
-
-		// For HTTP transport, we'll handle the JSON-RPC manually
-		// since we can't access the private serverCodec
-		var req map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
-			return
-		}
-
-		// Simple echo response for now
-		response := map[string]interface{}{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"result":  "Hello from JSON-RPC over HTTP",
-		}
-
-		json.NewEncoder(w).Encode(response)
-	})
-
-	// Mount the subroutes at the specific base path
-	mux.Handle(t.basePath+"/", http.StripPrefix(t.basePath, subroutes))
-
-	return mux
 }
