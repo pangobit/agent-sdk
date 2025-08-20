@@ -1,17 +1,11 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 )
 
 type Transport interface {
 	ListenAndServe(addr string) error
-}
-
-type Connection interface {
-	io.ReadWriteCloser
 }
 
 // ToolRegistry defines the interface for tool registration
@@ -112,30 +106,4 @@ func (s *Server) HTTPHandler() any {
 
 func (s *Server) ListenAndServe(addr string) error {
 	return s.transport.ListenAndServe(addr)
-}
-
-func (s *Server) HandleRequest(path string, reader io.Reader, writer io.Writer) error {
-	dec := json.NewDecoder(reader)
-	var req map[string]any
-	if err := dec.Decode(&req); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-type Tool struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Schema      struct {
-		Inputs   map[string]any `json:"inputs,omitempty"`
-		Required []string       `json:"required,omitempty"`
-	} `json:"schema"`
-}
-
-type PromptTemplate struct {
-	ID          string         `json:"id"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	Arguments   map[string]any `json:"arguments"`
 }
