@@ -25,17 +25,10 @@ type MethodInfo struct {
 
 // ToolInfo represents information about a registered tool for HTTP responses
 type ToolInfo struct {
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	Parameters  map[string]ParameterInfo `json:"parameters"`
-	Returns     string                   `json:"returns"`
-}
-
-// ParameterInfo represents information about a tool parameter
-type ParameterInfo struct {
-	Type        string `json:"type"`
-	Description string `json:"description"`
-	Required    bool   `json:"required"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters"`
+	Returns     string                 `json:"returns"`
 }
 
 // NewToolService creates a new tool service
@@ -91,27 +84,15 @@ func (t *ToolService) ToolDiscoveryHandler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		// Convert method registry to tool info format
+		// Convert method registry to tool info format with full schema preservation
 		tools := make(map[string]ToolInfo)
 		registry := t.GetMethodRegistry()
 
 		for methodKey, methodInfo := range registry {
-			// Convert parameters to ParameterInfo format
-			paramInfo := make(map[string]ParameterInfo)
-			for name, param := range methodInfo.Parameters {
-				if paramMap, ok := param.(map[string]interface{}); ok {
-					paramInfo[name] = ParameterInfo{
-						Type:        getString(paramMap, "type"),
-						Description: getString(paramMap, "description"),
-						Required:    getBool(paramMap, "required"),
-					}
-				}
-			}
-
 			tools[methodKey] = ToolInfo{
 				Name:        methodKey,
 				Description: methodInfo.Description,
-				Parameters:  paramInfo,
+				Parameters:  methodInfo.Parameters, // Preserve full parameter schema
 				Returns:     "",
 			}
 		}
@@ -123,19 +104,4 @@ func (t *ToolService) ToolDiscoveryHandler() http.Handler {
 
 		json.NewEncoder(w).Encode(response)
 	})
-}
-
-// Helper functions for type conversion
-func getString(m map[string]any, key string) string {
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
-}
-
-func getBool(m map[string]any, key string) bool {
-	if v, ok := m[key].(bool); ok {
-		return v
-	}
-	return false
 }
