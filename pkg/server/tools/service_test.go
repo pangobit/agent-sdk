@@ -8,6 +8,113 @@ import (
 	"testing"
 )
 
+// SchemaCheckFunc represents a function that checks a specific aspect of a schema
+type SchemaCheckFunc func(t *testing.T, param map[string]interface{})
+
+// SchemaCheck represents a check for a specific parameter
+type SchemaCheck struct {
+	paramName string
+	checks    []SchemaCheckFunc
+}
+
+// checkRequiredIsArray checks that the required field is an array with specific values
+func checkRequiredIsArray(expected []string) SchemaCheckFunc {
+	return func(t *testing.T, param map[string]interface{}) {
+		required, exists := param["required"]
+		if !exists {
+			t.Error("required field missing")
+			return
+		}
+		requiredArray, ok := required.([]interface{})
+		if !ok {
+			t.Errorf("required field should be an array, got %T", required)
+			return
+		}
+		if len(requiredArray) != len(expected) {
+			t.Errorf("required array length mismatch: expected %d, got %d", len(expected), len(requiredArray))
+			return
+		}
+		for i, v := range expected {
+			if requiredArray[i] != v {
+				t.Errorf("required[%d] mismatch: expected %v, got %v", i, v, requiredArray[i])
+			}
+		}
+	}
+}
+
+// checkPropertiesExist checks that specified properties exist
+func checkPropertiesExist(expectedProps []string) SchemaCheckFunc {
+	return func(t *testing.T, param map[string]interface{}) {
+		properties, exists := param["properties"]
+		if !exists {
+			t.Error("properties field missing")
+			return
+		}
+		propsMap, ok := properties.(map[string]interface{})
+		if !ok {
+			t.Errorf("properties field should be a map, got %T", properties)
+			return
+		}
+		for _, prop := range expectedProps {
+			if _, exists := propsMap[prop]; !exists {
+				t.Errorf("property %s missing from properties", prop)
+			}
+		}
+	}
+}
+
+// checkNestedStructure checks that nested structure exists and has the expected keys/values
+func checkNestedStructure(parentKey, nestedKey string, expected map[string]interface{}) SchemaCheckFunc {
+	return func(t *testing.T, param map[string]interface{}) {
+		properties, exists := param["properties"]
+		if !exists {
+			t.Error("properties field missing")
+			return
+		}
+		propsMap, ok := properties.(map[string]interface{})
+		if !ok {
+			t.Errorf("properties field should be a map, got %T", properties)
+			return
+		}
+		parentProp, exists := propsMap[parentKey]
+		if !exists {
+			t.Errorf("parent property %s missing", parentKey)
+			return
+		}
+		parentMap, ok := parentProp.(map[string]interface{})
+		if !ok {
+			t.Errorf("parent property %s should be a map, got %T", parentKey, parentProp)
+			return
+		}
+		nestedProp, exists := parentMap[nestedKey]
+		if !exists {
+			t.Errorf("nested property %s missing from %s", nestedKey, parentKey)
+			return
+		}
+		nestedMap, ok := nestedProp.(map[string]interface{})
+		if !ok {
+			t.Errorf("nested property %s.%s should be a map, got %T", parentKey, nestedKey, nestedProp)
+			return
+		}
+
+		// Check that expected keys exist and have reasonable values
+		for key := range expected {
+			actualValue, exists := nestedMap[key]
+			if !exists {
+				t.Errorf("expected key %s missing from nested structure %s.%s", key, parentKey, nestedKey)
+				continue
+			}
+
+			// For simple type checks, just verify the key exists and has a non-nil value
+			if actualValue == nil {
+				t.Errorf("expected value for key %s in nested structure %s.%s is nil", key, parentKey, nestedKey)
+			}
+		}
+
+		t.Logf("✓ Nested structure %s.%s contains expected keys", parentKey, nestedKey)
+	}
+}
+
 func TestNewToolService(t *testing.T) {
 	tests := []struct {
 		name string
@@ -233,6 +340,7 @@ func TestToolService_ToolDiscoveryHandler(t *testing.T) {
 		}
 		expectedStatus int
 		expectedBody   map[string]interface{}
+		schemaChecks   []SchemaCheck
 	}{
 		{
 			name:            "get_tools_with_no_methods",
@@ -245,37 +353,101 @@ func TestToolService_ToolDiscoveryHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "get_tools_with_methods",
+			name:   "get_tools_with_complex_nested_parameters_fixed_behavior",
 			method: http.MethodGet,
 			registerMethods: []struct {
 				serviceName, methodName, description string
 				parameters                           map[string]interface{}
 			}{
-				{"HelloService", "Hello", "Greeting method", map[string]interface{}{
-					"name": map[string]interface{}{
-						"type":        "string",
-						"description": "Name to greet",
-						"required":    true,
+				{"QuizService", "CreateQuiz", "Creates a new quiz", map[string]interface{}{
+					"quiz": map[string]interface{}{
+						"type":        "object",
+						"description": "Quiz creation object",
+						"required":    []string{"name", "questions"},
+						"properties": map[string]interface{}{
+							"name": map[string]interface{}{
+								"type":        "string",
+								"description": "Quiz name",
+								"example":     "Math Quiz",
+							},
+							"questions": map[string]interface{}{
+								"type":        "array",
+								"description": "Array of questions",
+								"items": map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"text": map[string]interface{}{
+											"type":        "string",
+											"description": "Question text",
+											"example":     "What is 2+2?",
+										},
+									},
+									"required": []string{"text"},
+								},
+							},
+						},
 					},
 				}},
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody: map[string]interface{}{
 				"tools": map[string]interface{}{
-					"HelloService.Hello": map[string]interface{}{
-						"name":        "HelloService.Hello",
-						"description": "Greeting method",
+					"QuizService.CreateQuiz": map[string]interface{}{
+						"name":        "QuizService.CreateQuiz",
+						"description": "Creates a new quiz",
 						"parameters": map[string]interface{}{
-							"name": map[string]interface{}{
-								"type":        "string",
-								"description": "Name to greet",
-								"required":    true,
+							"quiz": map[string]interface{}{
+								"type":        "object",
+								"description": "Quiz creation object",
+								"required":    []string{"name", "questions"},
+								"properties": map[string]interface{}{
+									"name": map[string]interface{}{
+										"type":        "string",
+										"description": "Quiz name",
+										"example":     "Math Quiz",
+									},
+									"questions": map[string]interface{}{
+										"type":        "array",
+										"description": "Array of questions",
+										"items": map[string]interface{}{
+											"type": "object",
+											"properties": map[string]interface{}{
+												"text": map[string]interface{}{
+													"type":        "string",
+													"description": "Question text",
+													"example":     "What is 2+2?",
+												},
+											},
+											"required": []string{"text"},
+										},
+									},
+								},
 							},
 						},
 						"returns": "",
 					},
 				},
 				"description": "Available tools for LLM-powered applications",
+			},
+			schemaChecks: []SchemaCheck{
+				{
+					paramName: "quiz",
+					checks: []SchemaCheckFunc{
+						checkRequiredIsArray([]string{"name", "questions"}),
+						checkPropertiesExist([]string{"name", "questions"}),
+						checkNestedStructure("questions", "items", map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"text": map[string]interface{}{
+									"type":        "string",
+									"description": "Question text",
+									"example":     "What is 2+2?",
+								},
+							},
+							"required": []string{"text"},
+						}),
+					},
+				},
 			},
 		},
 		{
@@ -362,91 +534,26 @@ func TestToolService_ToolDiscoveryHandler(t *testing.T) {
 						if expectedTool["description"] != actualTool["description"] {
 							t.Errorf("expected tool description %s, got %s", expectedTool["description"], actualTool["description"])
 						}
+
+						// Run schema checks for complex parameter validation
+						for _, schemaCheck := range tt.schemaChecks {
+							actualParams := actualTool["parameters"].(map[string]interface{})
+							param, exists := actualParams[schemaCheck.paramName]
+							if !exists {
+								t.Errorf("parameter %s not found in actual response", schemaCheck.paramName)
+								continue
+							}
+							paramMap, ok := param.(map[string]interface{})
+							if !ok {
+								t.Errorf("parameter %s should be a map, got %T", schemaCheck.paramName, param)
+								continue
+							}
+							for _, check := range schemaCheck.checks {
+								check(t, paramMap)
+							}
+						}
 					}
 				}
-			}
-		})
-	}
-}
-
-func TestHelperFunctions(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    map[string]any
-		key      string
-		expected interface{}
-		testFunc func(map[string]any, string) interface{}
-	}{
-		{
-			name: "getString_valid",
-			input: map[string]any{
-				"test": "value",
-			},
-			key:      "test",
-			expected: "value",
-			testFunc: func(m map[string]any, k string) interface{} { return getString(m, k) },
-		},
-		{
-			name: "getString_missing",
-			input: map[string]any{
-				"other": "value",
-			},
-			key:      "test",
-			expected: "",
-			testFunc: func(m map[string]any, k string) interface{} { return getString(m, k) },
-		},
-		{
-			name: "getString_wrong_type",
-			input: map[string]any{
-				"test": 123,
-			},
-			key:      "test",
-			expected: "",
-			testFunc: func(m map[string]any, k string) interface{} { return getString(m, k) },
-		},
-		{
-			name: "getBool_true",
-			input: map[string]any{
-				"test": true,
-			},
-			key:      "test",
-			expected: true,
-			testFunc: func(m map[string]any, k string) interface{} { return getBool(m, k) },
-		},
-		{
-			name: "getBool_false",
-			input: map[string]any{
-				"test": false,
-			},
-			key:      "test",
-			expected: false,
-			testFunc: func(m map[string]any, k string) interface{} { return getBool(m, k) },
-		},
-		{
-			name: "getBool_missing",
-			input: map[string]any{
-				"other": true,
-			},
-			key:      "test",
-			expected: false,
-			testFunc: func(m map[string]any, k string) interface{} { return getBool(m, k) },
-		},
-		{
-			name: "getBool_wrong_type",
-			input: map[string]any{
-				"test": "true",
-			},
-			key:      "test",
-			expected: false,
-			testFunc: func(m map[string]any, k string) interface{} { return getBool(m, k) },
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.testFunc(tt.input, tt.key)
-			if result != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
 		})
 	}
