@@ -11,23 +11,25 @@ import (
 
 // UserProfileRequest represents a request to get user profile
 type UserProfileRequest struct {
-	UserID   string `json:"userId"`
-	IncludeDetails bool   `json:"includeDetails"`
+	UserID         string `json:"user_id" bind:"path=user_id,required"`
+	IncludeDetails bool   `json:"include_details" bind:"query=include_details"`
+	Format         string `json:"format" bind:"query=format" validate:"omitempty,oneof=json xml"`
 }
 
 // UpdateProfileRequest represents a request to update user profile
 type UpdateProfileRequest struct {
-	UserID   string                 `json:"userId"`
-	Name     string                 `json:"name"`
-	Email    string                 `json:"email"`
-	Metadata map[string]interface{} `json:"metadata"`
+	UserID   string                 `json:"user_id" bind:"path=user_id,required"`
+	Name     string                 `json:"name" bind:"json" validate:"required,min=2,max=100"`
+	Email    string                 `json:"email" bind:"json" validate:"required,email"`
+	Metadata map[string]interface{} `json:"metadata" bind:"json"`
 }
 
 // GetUserProfile handles GET /api/users/{userId}/profile
 // This endpoint retrieves a user's profile information.
 // Parameters:
-//   - userId: The unique identifier for the user
-//   - includeDetails: Whether to include detailed profile information
+//   - userId: The unique identifier for the user (from path, required)
+//   - includeDetails: Whether to include detailed profile information (from query)
+//   - format: Response format, defaults to json (from query, validates json|xml)
 func GetUserProfile(w http.ResponseWriter, r *http.Request, req UserProfileRequest) error {
 	// Simulate fetching user profile
 	response := map[string]interface{}{
@@ -44,10 +46,10 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, req UserProfileReque
 // UpdateUserProfile handles PUT /api/users/{userId}/profile
 // This endpoint updates a user's profile information.
 // Parameters:
-//   - userId: The unique identifier for the user
-//   - name: The user's full name
-//   - email: The user's email address
-//   - metadata: Additional metadata for the profile
+//   - userId: The unique identifier for the user (from path, required)
+//   - name: The user's full name (from JSON body, required, 2-100 chars)
+//   - email: The user's email address (from JSON body, required, valid email)
+//   - metadata: Additional metadata for the profile (from JSON body)
 func UpdateUserProfile(w http.ResponseWriter, r *http.Request, req UpdateProfileRequest) error {
 	// Simulate updating user profile
 	response := map[string]interface{}{

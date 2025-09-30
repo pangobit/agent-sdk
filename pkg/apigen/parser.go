@@ -3,6 +3,7 @@ package apigen
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"strings"
 )
@@ -68,10 +69,13 @@ func generateMethodDescription(funcDecl *ast.FuncDecl, fset *token.FileSet) (Met
 	// Extract description from comments
 	desc.Description = extractDocComment(funcDecl)
 
+	// Collect type definitions from the file for struct field resolution
+	typeDefs := collectTypeDefinitions(funcDecl, fset)
+
 	// Extract parameters (excluding HTTP types if configured)
 	if funcDecl.Type.Params != nil {
 		for _, param := range funcDecl.Type.Params.List {
-			paramInfo, err := extractParameterInfo(param, fset)
+			paramInfo, err := extractParameterInfo(param, fset, typeDefs)
 			if err != nil {
 				return desc, fmt.Errorf("failed to extract parameter info: %w", err)
 			}
@@ -106,16 +110,123 @@ func extractDocComment(funcDecl *ast.FuncDecl) string {
 	return ""
 }
 
+// collectTypeDefinitions collects all type definitions from the file containing the function
+func collectTypeDefinitions(funcDecl *ast.FuncDecl, fset *token.FileSet) map[string]*ast.TypeSpec {
+	typeDefs := make(map[string]*ast.TypeSpec)
+
+	// Find the file that contains this function
+	pos := fset.Position(funcDecl.Pos())
+	filename := pos.Filename
+
+	// We need to parse the file again to get all declarations
+	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	if err != nil {
+		return typeDefs
+	}
+
+	// Collect all type declarations
+	for _, decl := range file.Decls {
+		if genDecl, ok := decl.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
+			for _, spec := range genDecl.Specs {
+				if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+					typeDefs[typeSpec.Name.Name] = typeSpec
+				}
+			}
+		}
+	}
+
+	return typeDefs
+}
+
 // extractParameterInfo extracts type information from an AST field
-func extractParameterInfo(field *ast.Field, fset *token.FileSet) (ParameterInfo, error) {
+func extractParameterInfo(field *ast.Field, fset *token.FileSet, typeDefs map[string]*ast.TypeSpec) (ParameterInfo, error) {
 	paramType, err := typeToString(field.Type, fset)
 	if err != nil {
 		return ParameterInfo{}, err
 	}
 
-	return ParameterInfo{
+	paramInfo := ParameterInfo{
 		Type: paramType,
-	}, nil
+	}
+
+	// If this is a custom struct type defined in the same file, extract its fields
+	if ident, ok := field.Type.(*ast.Ident); ok {
+		if typeSpec, exists := typeDefs[ident.Name]; exists {
+			if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+				fields, err := extractStructFields(structType, fset)
+				if err == nil {
+					paramInfo.Fields = fields
+				}
+			}
+		}
+	}
+
+	return paramInfo, nil
+}
+
+// extractStructFields extracts field information from a struct type
+func extractStructFields(structType *ast.StructType, fset *token.FileSet) (map[string]FieldInfo, error) {
+	fields := make(map[string]FieldInfo)
+
+	if structType.Fields == nil {
+		return fields, nil
+	}
+
+	for _, field := range structType.Fields.List {
+		fieldType, err := typeToString(field.Type, fset)
+		if err != nil {
+			continue // Skip fields we can't parse
+		}
+
+		fieldInfo := FieldInfo{
+			Type: fieldType,
+		}
+
+		// Parse struct tags if present
+		if field.Tag != nil {
+			annotations, err := parseStructTags(field.Tag.Value)
+			if err == nil {
+				fieldInfo.Annotations = annotations
+			}
+		}
+
+		// Handle multiple field names with same type
+		for _, name := range field.Names {
+			fields[name.Name] = fieldInfo
+		}
+	}
+
+	return fields, nil
+}
+
+// parseStructTags parses Go struct tags into a map of key-value pairs
+// Go struct tags are in the format `key:"value" key2:"value2"`
+func parseStructTags(tagStr string) (map[string]string, error) {
+	annotations := make(map[string]string)
+
+	// Remove surrounding quotes if present
+	tagStr = strings.Trim(tagStr, "`")
+
+	// Simple parser for struct tags
+	// This handles the common format: key:"value" key2:"value2,option"
+	parts := strings.Fields(tagStr)
+	for _, part := range parts {
+		// Split on first colon
+		colonIndex := strings.Index(part, ":")
+		if colonIndex == -1 {
+			continue
+		}
+
+		key := part[:colonIndex]
+		value := part[colonIndex+1:]
+
+		// Remove surrounding quotes
+		value = strings.Trim(value, `"`)
+
+		annotations[key] = value
+	}
+
+	return annotations, nil
 }
 
 // typeToString converts an AST type expression to a string representation

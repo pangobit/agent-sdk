@@ -84,9 +84,63 @@ The generated API description follows this JSON structure:
         "param1": {
           "type": "string"
         },
-        "param2": {
-          "type": "int"
+        "customStruct": {
+          "type": "CustomRequest",
+          "fields": {
+            "Field1": {
+              "type": "string"
+            },
+            "Field2": {
+              "type": "int"
+            }
+          }
         }
+      }
+    }
+  }
+}
+```
+
+### Struct Field Extraction
+
+When a parameter is a custom struct type defined in the same file/package, `apigen` automatically extracts and includes the struct's fields in the API description. This provides complete type information for API consumers.
+
+**Example**: If a method takes a `UserProfileRequest` parameter, the output will include both the type name and all the fields within that struct.
+
+#### Struct Tag Annotations
+
+Struct tags are automatically parsed and included as "annotations" in the field information. Common struct tags include:
+
+- **`json`**: JSON field names and serialization options
+- **`bind`**: Parameter binding information (query, path, json, etc.)
+- **`validate`**: Validation rules and constraints
+- **Custom tags**: Any application-specific metadata
+
+**Example Output:**
+```json
+"req": {
+  "type": "UserProfileRequest",
+  "fields": {
+    "UserID": {
+      "type": "string",
+      "annotations": {
+        "json": "user_id",
+        "bind": "path=user_id,required"
+      }
+    },
+    "IncludeDetails": {
+      "type": "bool", 
+      "annotations": {
+        "json": "include_details",
+        "bind": "query=include_details"
+      }
+    },
+    "Format": {
+      "type": "string",
+      "annotations": {
+        "json": "format",
+        "bind": "query=format",
+        "validate": "omitempty,oneof=json xml"
       }
     }
   }
@@ -97,9 +151,6 @@ The generated API description follows this JSON structure:
 
 ### APIDescription
 - `APIName`: Name of the generated API
-- `Maps`: Array of MapDescription objects
-
-### MapDescription
 - `Methods`: Map of method names to MethodDescription objects
 
 ### MethodDescription
@@ -108,7 +159,13 @@ The generated API description follows this JSON structure:
 
 ### ParameterInfo
 - `Type`: Go type string (e.g., "string", "[]int", "map[string]interface{}")
+- `Fields`: Map of field names to FieldInfo objects (for struct types)
 - `Description`: Optional parameter description (future enhancement)
+
+### FieldInfo
+- `Type`: Go type string for the struct field
+- `Annotations`: Map of struct tag key-value pairs (e.g., json, bind, validate)
+- `Description`: Optional field description (future enhancement)
 
 ## Integration with Existing Codebase
 
