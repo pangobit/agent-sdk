@@ -38,21 +38,19 @@ func GenerateFromPackage(packagePath string, config GeneratorConfig) (*APIDescri
 	filteredMethods := filterMethods(allMethods, config)
 
 	// Generate descriptions
-	mapDesc := MapDescription{
-		Methods: make(map[string]MethodDescription),
-	}
+	methods := make(map[string]MethodDescription)
 
 	for name, method := range filteredMethods {
 		desc, err := generateMethodDescription(method, fset)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate description for %s: %w", name, err)
 		}
-		mapDesc.Methods[name] = desc
+		methods[name] = desc
 	}
 
 	apiDesc := &APIDescription{
 		APIName: config.APIName,
-		Maps:    []MapDescription{mapDesc},
+		Methods: methods,
 	}
 
 	if apiDesc.APIName == "" {
@@ -78,21 +76,20 @@ func GenerateFromFile(filePath string, config GeneratorConfig) (*APIDescription,
 	methods := extractMethods(file)
 	filteredMethods := filterMethods(methods, config)
 
-	mapDesc := MapDescription{
-		Methods: make(map[string]MethodDescription),
-	}
+	// Generate descriptions
+	methodDescriptions := make(map[string]MethodDescription)
 
 	for name, method := range filteredMethods {
 		desc, err := generateMethodDescription(method, fset)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate description for %s: %w", name, err)
 		}
-		mapDesc.Methods[name] = desc
+		methodDescriptions[name] = desc
 	}
 
 	apiDesc := &APIDescription{
 		APIName: config.APIName,
-		Maps:    []MapDescription{mapDesc},
+		Methods: methodDescriptions,
 	}
 
 	if apiDesc.APIName == "" {

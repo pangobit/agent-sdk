@@ -2,12 +2,7 @@ package apigen
 
 // APIDescription represents a complete API description
 type APIDescription struct {
-	APIName string            `json:"apiName"`
-	Maps    []MapDescription  `json:"maps"`
-}
-
-// MapDescription represents a collection of method descriptions
-type MapDescription struct {
+	APIName string                       `json:"apiName"`
 	Methods map[string]MethodDescription `json:"methods"`
 }
 

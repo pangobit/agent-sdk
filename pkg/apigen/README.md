@@ -77,23 +77,19 @@ The generated API description follows this JSON structure:
 ```json
 {
   "apiName": "MyAPI",
-  "maps": [
-    {
-      "methods": {
-        "MethodName": {
-          "description": "Method description from Go doc",
-          "parameters": {
-            "param1": {
-              "type": "string"
-            },
-            "param2": {
-              "type": "int"
-            }
-          }
+  "methods": {
+    "MethodName": {
+      "description": "Method description from Go doc",
+      "parameters": {
+        "param1": {
+          "type": "string"
+        },
+        "param2": {
+          "type": "int"
         }
       }
     }
-  ]
+  }
 }
 ```
 

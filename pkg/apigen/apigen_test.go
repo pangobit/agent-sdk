@@ -99,12 +99,8 @@ func privateMethod() {
 				t.Errorf("expected API name %s, got %s", tt.config.APIName, result.APIName)
 			}
 
-			if len(result.Maps) != 1 {
-				t.Errorf("expected 1 map, got %d", len(result.Maps))
-			}
-
-			if len(result.Maps[0].Methods) != tt.expectCount {
-				t.Errorf("expected %d methods, got %d", tt.expectCount, len(result.Maps[0].Methods))
+			if len(result.Methods) != tt.expectCount {
+				t.Errorf("expected %d methods, got %d", tt.expectCount, len(result.Methods))
 			}
 
 			// Verify JSON serialization works
@@ -141,7 +137,7 @@ func ProcessData(name string, age int, items []string, config map[string]interfa
 		t.Fatalf("failed to generate description: %v", err)
 	}
 
-	method, exists := result.Maps[0].Methods["ProcessData"]
+	method, exists := result.Methods["ProcessData"]
 	if !exists {
 		t.Fatal("ProcessData method not found")
 	}
@@ -196,7 +192,7 @@ func HandleRequest(w http.ResponseWriter, req *http.Request, userID string) erro
 		t.Fatalf("failed to generate description: %v", err)
 	}
 
-	method := result.Maps[0].Methods["HandleRequest"]
+	method := result.Methods["HandleRequest"]
 
 	// Should only have userID parameter, not w or req
 	if len(method.Parameters) != 1 {
