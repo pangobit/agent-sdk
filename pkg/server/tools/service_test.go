@@ -125,14 +125,15 @@ func TestNewToolService(t *testing.T) {
 			name: "default_tool_service",
 			opts: nil,
 			want: &ToolService{
-				methodRegistry: make(map[string]MethodInfo),
+				structMethods: make(map[string]structMethodInfo),
+				llmMethods:    make(map[string]llmMethodInfo),
 			},
 		},
 		{
 			name: "tool_service_with_options",
 			opts: []ToolServiceOpts{
 				func(ts *ToolService) {
-					ts.methodRegistry["test"] = MethodInfo{
+					ts.structMethods["test"] = structMethodInfo{
 						ServiceName: "TestService",
 						MethodName:  "TestMethod",
 						Description: "Test description",
@@ -141,7 +142,7 @@ func TestNewToolService(t *testing.T) {
 				},
 			},
 			want: &ToolService{
-				methodRegistry: map[string]MethodInfo{
+				structMethods: map[string]structMethodInfo{
 					"test": {
 						ServiceName: "TestService",
 						MethodName:  "TestMethod",
@@ -149,6 +150,7 @@ func TestNewToolService(t *testing.T) {
 						Parameters:  map[string]interface{}{},
 					},
 				},
+				llmMethods: make(map[string]llmMethodInfo),
 			},
 		},
 	}
@@ -162,17 +164,23 @@ func TestNewToolService(t *testing.T) {
 				t.Fatal("NewToolService returned nil")
 			}
 
-			// Check that the method registry was initialized
-			if got.methodRegistry == nil {
-				t.Error("methodRegistry was not initialized")
+			// Check that the registries were initialized
+			if got.structMethods == nil {
+				t.Error("structMethods was not initialized")
+			}
+			if got.llmMethods == nil {
+				t.Error("llmMethods was not initialized")
 			}
 
 			// For the test with options, verify the registry was populated
 			if len(tt.opts) > 0 {
-				registry := got.GetMethodRegistry()
-				if len(registry) != len(tt.want.methodRegistry) {
-					t.Errorf("expected %d methods in registry, got %d",
-						len(tt.want.methodRegistry), len(registry))
+				if len(got.structMethods) != len(tt.want.structMethods) {
+					t.Errorf("expected %d struct methods, got %d",
+						len(tt.want.structMethods), len(got.structMethods))
+				}
+				if len(got.llmMethods) != len(tt.want.llmMethods) {
+					t.Errorf("expected %d LLM methods, got %d",
+						len(tt.want.llmMethods), len(got.llmMethods))
 				}
 			}
 		})
@@ -240,17 +248,107 @@ func TestToolService_RegisterMethod(t *testing.T) {
 				return
 			}
 
-			if methodInfo.ServiceName != tt.serviceName {
-				t.Errorf("expected service name %s, got %s", tt.serviceName, methodInfo.ServiceName)
-			}
-			if methodInfo.MethodName != tt.methodName {
-				t.Errorf("expected method name %s, got %s", tt.methodName, methodInfo.MethodName)
+			if methodInfo.Name != tt.expectedKey {
+				t.Errorf("expected tool name %s, got %s", tt.expectedKey, methodInfo.Name)
 			}
 			if methodInfo.Description != tt.description {
 				t.Errorf("expected description %s, got %s", tt.description, methodInfo.Description)
 			}
 			if !reflect.DeepEqual(methodInfo.Parameters, tt.parameters) {
 				t.Errorf("expected parameters %v, got %v", tt.parameters, methodInfo.Parameters)
+			}
+			if methodInfo.Returns != "" {
+				t.Errorf("expected returns to be empty for struct methods, got %s", methodInfo.Returns)
+			}
+		})
+	}
+}
+
+func TestToolService_RegisterMethodLLM(t *testing.T) {
+	tests := []struct {
+		name          string
+		methodName    string
+		description   string
+		returns       []string
+		expectedKey   string
+		expectedError bool
+	}{
+		{
+			name:          "register_valid_llm_method",
+			methodName:    "HelloService.Hello",
+			description:   "Sends a greeting message. Parameters: {\"name\": {\"type\": \"string\", \"description\": \"The name to greet\"}}",
+			returns:       []string{"Greeting response object"},
+			expectedKey:   "HelloService.Hello",
+			expectedError: false,
+		},
+		{
+			name:          "register_llm_method_without_returns",
+			methodName:    "TestService.Test",
+			description:   "Test method description",
+			returns:       nil,
+			expectedKey:   "TestService.Test",
+			expectedError: false,
+		},
+		{
+			name:          "register_llm_method_invalid_format",
+			methodName:    "InvalidFormat",
+			description:   "Invalid method name format",
+			returns:       nil,
+			expectedKey:   "",
+			expectedError: true,
+		},
+		{
+			name:          "register_llm_method_empty_parts",
+			methodName:    "Service.",
+			description:   "Empty method name",
+			returns:       nil,
+			expectedKey:   "",
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := NewToolService()
+
+			err := ts.RegisterMethodLLM(tt.methodName, tt.description, tt.returns...)
+
+			if tt.expectedError && err == nil {
+				t.Error("expected error but got none")
+			}
+			if !tt.expectedError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if !tt.expectedError {
+				// Verify the method was registered
+				registry := ts.GetMethodRegistry()
+				methodInfo, exists := registry[tt.expectedKey]
+
+				if !exists {
+					t.Errorf("method %s was not registered", tt.expectedKey)
+					return
+				}
+
+				// For LLM methods, the key should match the method name
+				if methodInfo.Name != tt.expectedKey {
+					t.Errorf("expected tool name %s, got %s", tt.expectedKey, methodInfo.Name)
+				}
+				if methodInfo.Description != tt.description {
+					t.Errorf("expected description %s, got %s", tt.description, methodInfo.Description)
+				}
+				// LLM methods should have nil parameters (embedded in description)
+				if methodInfo.Parameters != nil {
+					t.Errorf("expected parameters to be nil for LLM methods, got %v", methodInfo.Parameters)
+				}
+				// Check returns
+				expectedReturns := ""
+				if len(tt.returns) > 0 {
+					expectedReturns = tt.returns[0]
+				}
+				if methodInfo.Returns != expectedReturns {
+					t.Errorf("expected returns %s, got %s", expectedReturns, methodInfo.Returns)
+				}
 			}
 		})
 	}
@@ -337,6 +435,10 @@ func TestToolService_ToolDiscoveryHandler(t *testing.T) {
 		registerMethods []struct {
 			serviceName, methodName, description string
 			parameters                           map[string]interface{}
+		}
+		llmMethods []struct {
+			methodName, description string
+			returns                 []string
 		}
 		expectedStatus int
 		expectedBody   map[string]interface{}
@@ -451,11 +553,38 @@ func TestToolService_ToolDiscoveryHandler(t *testing.T) {
 			},
 		},
 		{
-			name:            "post_method_not_allowed",
-			method:          http.MethodPost,
-			registerMethods: nil,
-			expectedStatus:  http.StatusMethodNotAllowed,
-			expectedBody:    nil,
+			name:   "get_tools_with_mixed_registration_modes",
+			method: http.MethodGet,
+			registerMethods: []struct {
+				serviceName, methodName, description string
+				parameters                           map[string]interface{}
+			}{
+				{"HelloService", "Hello", "Sends a greeting", map[string]interface{}{"name": "string"}},
+			},
+			llmMethods: []struct {
+				methodName, description string
+				returns                 []string
+			}{
+				{"CalculatorService.Add", "Adds two numbers. Parameters: {\"a\": {\"type\": \"number\"}, \"b\": {\"type\": \"number\"}}", []string{"number"}},
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody: map[string]interface{}{
+				"tools": map[string]interface{}{
+					"HelloService.Hello": map[string]interface{}{
+						"name":        "HelloService.Hello",
+						"description": "Sends a greeting",
+						"parameters":  map[string]interface{}{"name": "string"},
+						"returns":     "",
+					},
+					"CalculatorService.Add": map[string]interface{}{
+						"name":        "CalculatorService.Add",
+						"description": "Adds two numbers. Parameters: {\"a\": {\"type\": \"number\"}, \"b\": {\"type\": \"number\"}}",
+						"parameters":  nil,
+						"returns":     "number",
+					},
+				},
+				"description": "Available tools for LLM-powered applications",
+			},
 		},
 		{
 			name:            "put_method_not_allowed",
@@ -475,6 +604,14 @@ func TestToolService_ToolDiscoveryHandler(t *testing.T) {
 				err := ts.RegisterMethod(method.serviceName, method.methodName, method.description, method.parameters)
 				if err != nil {
 					t.Fatalf("failed to register method: %v", err)
+				}
+			}
+
+			// Register LLM methods
+			for _, method := range tt.llmMethods {
+				err := ts.RegisterMethodLLM(method.methodName, method.description, method.returns...)
+				if err != nil {
+					t.Fatalf("failed to register LLM method: %v", err)
 				}
 			}
 

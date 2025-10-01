@@ -94,3 +94,23 @@ func RegisterService(server *server.Server, service any) error {
 func DescribeServiceMethod(server *server.Server, serviceName, methodName, description string, parameters map[string]any) error {
 	return server.RegisterMethod(serviceName, methodName, description, parameters)
 }
+
+// DescribeServiceMethodLLM creates a tool description for a service method using LLM-friendly combined description.
+// This is an alternative to DescribeServiceMethod that allows for more flexible parameter descriptions
+// suitable for LLM consumption.
+//
+// The description parameter should contain all necessary information for an LLM to understand
+// how to call the method, including parameter schemas, examples, and natural language guidance.
+// The optional returns parameter specifies the return type description.
+//
+// The methodName should be in the format "ServiceName.MethodName".
+//
+// Example:
+//
+//	description := `Sends a greeting message to the specified name.
+//	Parameters: {"name": {"type": "string", "description": "The name to greet", "required": true}}
+//	Returns: {"message": "Hello, {name}!", "success": true}`
+//	err := agentsdk.DescribeServiceMethodLLM(server, "HelloService.Hello", description, "Greeting response object")
+func DescribeServiceMethodLLM(server *server.Server, methodName, description string, returns ...string) error {
+	return server.RegisterMethodLLM(methodName, description, returns...)
+}
