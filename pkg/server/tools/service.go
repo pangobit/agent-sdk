@@ -1,8 +1,11 @@
+// Package tools handles the registration and storage of available tools in the agent server
 package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -11,30 +14,44 @@ type ToolServiceOpts func(*ToolService)
 
 // ToolService provides tool registration and discovery capabilities
 type ToolService struct {
-	methodRegistry map[string]MethodInfo
-	mutex          sync.RWMutex
+	// Separate internal storage for each registration mode
+	structMethods map[string]structMethodInfo // Key: "ServiceName.MethodName"
+	llmMethods    map[string]llmMethodInfo    // Key: "ServiceName.MethodName"
+	mutex         sync.RWMutex
 }
 
-// MethodInfo represents information about a registered method
-type MethodInfo struct {
-	ServiceName string
-	MethodName  string
-	Description string
-	Parameters  map[string]interface{}
+// structMethodInfo contains data for struct-based method registration
+type structMethodInfo struct {
+	ServiceName, MethodName, Description string
+	Parameters                           map[string]interface{} `json:"omitempty"`
+}
+
+// llmMethodInfo contains data for LLM-friendly method registration
+type llmMethodInfo struct {
+	ServiceName, MethodName string
+	ToolDescription         ToolInfoDescription
+}
+
+// ToolInfoDescription represents LLM-friendly tool registration
+type ToolInfoDescription struct {
+	MethodName  string // Full method name (ServiceName.MethodName)
+	Description string // Combined natural language + parameter schema for LLM
+	Returns     string // Optional: description of return type
 }
 
 // ToolInfo represents information about a registered tool for HTTP responses
 type ToolInfo struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 	Returns     string                 `json:"returns"`
 }
 
 // NewToolService creates a new tool service
 func NewToolService(opts ...ToolServiceOpts) *ToolService {
 	t := &ToolService{
-		methodRegistry: make(map[string]MethodInfo),
+		structMethods: make(map[string]structMethodInfo),
+		llmMethods:    make(map[string]llmMethodInfo),
 	}
 
 	for _, opt := range opts {
@@ -44,13 +61,13 @@ func NewToolService(opts ...ToolServiceOpts) *ToolService {
 	return t
 }
 
-// RegisterMethod registers a method as a tool
+// RegisterMethod registers a method as a tool using struct-based parameters
 func (t *ToolService) RegisterMethod(serviceName, methodName, description string, parameters map[string]interface{}) error {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
 	methodKey := serviceName + "." + methodName
-	t.methodRegistry[methodKey] = MethodInfo{
+	t.structMethods[methodKey] = structMethodInfo{
 		ServiceName: serviceName,
 		MethodName:  methodName,
 		Description: description,
@@ -60,17 +77,70 @@ func (t *ToolService) RegisterMethod(serviceName, methodName, description string
 	return nil
 }
 
-// GetMethodRegistry returns the method registry
-func (t *ToolService) GetMethodRegistry() map[string]MethodInfo {
+// RegisterMethodLLM registers a method using LLM-friendly combined description
+func (t *ToolService) RegisterMethodLLM(methodName, description string, returns ...string) error {
+	// Parse method name (format: "ServiceName.MethodName")
+	parts := strings.Split(methodName, ".")
+	if len(parts) != 2 {
+		return fmt.Errorf("method name must be in format 'ServiceName.MethodName'")
+	}
+
+	serviceName := parts[0]
+	methodNameOnly := parts[1]
+
+	if serviceName == "" || methodNameOnly == "" {
+		return fmt.Errorf("service name and method name cannot be empty")
+	}
+
+	returnValue := ""
+	if len(returns) > 0 {
+		returnValue = returns[0]
+	}
+
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	t.llmMethods[methodName] = llmMethodInfo{
+		ServiceName: serviceName,
+		MethodName:  methodNameOnly,
+		ToolDescription: ToolInfoDescription{
+			MethodName:  methodName,
+			Description: description,
+			Returns:     returnValue,
+		},
+	}
+
+	return nil
+}
+
+// GetMethodRegistry returns a unified view of all registered methods for debugging
+func (t *ToolService) GetMethodRegistry() map[string]ToolInfo {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 
-	// Return a copy to avoid race conditions
-	registry := make(map[string]MethodInfo)
-	for key, info := range t.methodRegistry {
-		registry[key] = info
+	tools := make(map[string]ToolInfo)
+
+	// Add struct methods
+	for key, method := range t.structMethods {
+		tools[key] = ToolInfo{
+			Name:        key,
+			Description: method.Description,
+			Parameters:  method.Parameters,
+			Returns:     "",
+		}
 	}
-	return registry
+
+	// Add LLM methods
+	for key, method := range t.llmMethods {
+		tools[key] = ToolInfo{
+			Name:        key,
+			Description: method.ToolDescription.Description,
+			Parameters:  nil,
+			Returns:     method.ToolDescription.Returns,
+		}
+	}
+
+	return tools
 }
 
 // ToolDiscoveryHandler returns an HTTP handler for tool discovery
@@ -84,18 +154,8 @@ func (t *ToolService) ToolDiscoveryHandler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		// Convert method registry to tool info format with full schema preservation
-		tools := make(map[string]ToolInfo)
-		registry := t.GetMethodRegistry()
-
-		for methodKey, methodInfo := range registry {
-			tools[methodKey] = ToolInfo{
-				Name:        methodKey,
-				Description: methodInfo.Description,
-				Parameters:  methodInfo.Parameters, // Preserve full parameter schema
-				Returns:     "",
-			}
-		}
+		// Get unified view of all methods
+		tools := t.GetMethodRegistry()
 
 		response := map[string]interface{}{
 			"tools":       tools,

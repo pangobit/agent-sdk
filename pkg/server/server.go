@@ -11,6 +11,8 @@ type Transport interface {
 // ToolRegistry defines the interface for tool registration
 type ToolRegistry interface {
 	RegisterMethod(serviceName, methodName, description string, parameters map[string]interface{}) error
+	// RegisterMethodLLM registers a method using LLM-friendly combined description
+	RegisterMethodLLM(methodName, description string, returns ...string) error
 }
 
 // MethodExecutor defines the interface for executing methods
@@ -86,6 +88,21 @@ func (s *Server) RegisterMethod(serviceName, methodName, description string, par
 		return fmt.Errorf("tool registry not configured")
 	}
 	return s.toolRegistry.RegisterMethod(serviceName, methodName, description, parameters)
+}
+
+// RegisterMethodLLM registers a method using LLM-friendly combined description.
+// This method provides an alternative to RegisterMethod that allows for more flexible
+// parameter descriptions suitable for LLM consumption. The description parameter should
+// contain all necessary information for an LLM to understand how to call the method,
+// including parameter schemas, examples, and natural language guidance.
+//
+// The methodName should be in the format "ServiceName.MethodName".
+// The optional returns parameter specifies the return type description.
+func (s *Server) RegisterMethodLLM(methodName, description string, returns ...string) error {
+	if s.toolRegistry == nil {
+		return fmt.Errorf("tool registry not configured")
+	}
+	return s.toolRegistry.RegisterMethodLLM(methodName, description, returns...)
 }
 
 // ExecuteMethod executes a method through the method executor
