@@ -157,8 +157,8 @@ func inferPackageFromFile(filePath string) string {
 		return ""
 	}
 
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(content), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "package ") {
 			parts := strings.Fields(line)
