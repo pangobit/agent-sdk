@@ -118,6 +118,30 @@ agentsdk.DescribeServiceMethodLLM(server, "UserService.CreateUser", description,
 
 Both approaches produce the same runtime behavior - they just differ in how method information is described and validated.
 
+### Automated API Description Generation with `apigen`
+
+For services with many methods, manually writing descriptions can be time-consuming and error-prone. The `apigen` package provides automated generation of API descriptions from your Go source code.
+
+See [pkg/apigen/README.md](pkg/apigen/README.md) for comprehensive documentation on:
+- **Features**: Automatic method discovery, type analysis, doc comment integration
+- **Usage**: Library functions and CLI tool for code generation
+- **Output Formats**: Traditional JSON and new map-based formats
+- **Integration**: Using with `go generate` and embedding in your applications
+
+#### Quick Example
+
+```bash
+# Generate map format (recommended for individual method access)
+go run github.com/pangobit/agent-sdk/cmd/apigen \
+  -package=./pkg/handlers \
+  -prefix=Handle \
+  -out=api_gen.go \
+  -const=APIDefinitions \
+  -map
+```
+
+See `examples/apigen_demo/` for a demonstration of both output formats.
+
 ### Start your server
 ```go
 server.ListenAndServe(":8080")
