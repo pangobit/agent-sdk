@@ -21,6 +21,7 @@ func main() {
 		prefix      = flag.String("prefix", "", "Include methods starting with this prefix")
 		suffix      = flag.String("suffix", "", "Include methods ending with this suffix")
 		contains    = flag.String("contains", "", "Include methods containing this string")
+		mapOutput   = flag.Bool("map", false, "Generate map[string]string instead of single JSON string")
 		help        = flag.Bool("help", false, "Show help")
 	)
 
@@ -65,9 +66,17 @@ func main() {
 	// Generate the file
 	var err error
 	if *packagePath != "" {
-		err = apigen.GenerateAndWriteGoFile(*packagePath, *outputFile, *constName, packageName, config)
+		if *mapOutput {
+			err = apigen.GenerateAndWriteGoFileAsMap(*packagePath, *outputFile, *constName, packageName, config)
+		} else {
+			err = apigen.GenerateAndWriteGoFile(*packagePath, *outputFile, *constName, packageName, config)
+		}
 	} else {
-		err = apigen.GenerateAndWriteGoFileFromFile(*filePath, *outputFile, *constName, packageName, config)
+		if *mapOutput {
+			err = apigen.GenerateAndWriteGoFileFromFileAsMap(*filePath, *outputFile, *constName, packageName, config)
+		} else {
+			err = apigen.GenerateAndWriteGoFileFromFile(*filePath, *outputFile, *constName, packageName, config)
+		}
 	}
 
 	if err != nil {
@@ -187,6 +196,7 @@ func showHelp() {
 	fmt.Println("  -prefix string     Include methods starting with this prefix")
 	fmt.Println("  -suffix string     Include methods ending with this suffix")
 	fmt.Println("  -contains string   Include methods containing this string")
+	fmt.Println("  -map               Generate map[string]string instead of single JSON string")
 	fmt.Println("  -help              Show this help")
 	fmt.Println()
 	fmt.Println("EXAMPLES:")
