@@ -31,6 +31,27 @@ Once your server is configured, you need to do two things:
 - Register services, aka, types with exported methods that can be called by agents.
 - Describe those services' methods, which provides calling agents a description of what the methods do, and what parameters they accept.
 
+### Service Registration Restrictions
+
+Under the hood, service registration uses Go's standard library `net/rpc` package. This imposes specific requirements on the methods that can be registered:
+
+- **Exported Methods**: Only exported methods (starting with capital letters) of exported types can be registered
+- **Method Signature**: Methods must have exactly two arguments, both of exported types
+- **Pointer Arguments**: The second argument must be a pointer
+- **Return Value**: Methods must return exactly one value of type `error`
+
+Clients access registered methods using the format `"Type.Method"`, where `Type` is the receiver's concrete type.
+
+For example, a valid service method would look like:
+```go
+type MyService struct{}
+
+func (s *MyService) ValidMethod(req MyRequest, resp *MyResponse) error {
+    // implementation
+    return nil
+}
+```
+
 ### Method Registration: Two Approaches
 
 The Agent SDK provides two ways to describe your service methods, each suited for different use cases:
