@@ -70,39 +70,8 @@ func NewConfigLoader(path string) error {
 
 	// Demonstrate how the generated map would be used in real code
 	fmt.Println("3. How to Use the Generated Map in Your Application:")
-	fmt.Println(`
-// The generated_api.go file contains:
-// var GeneratedAPIDefs = map[string]string{
-//     "NewExampleService": ` + "`" + `{"description": "NewExampleService creates a new example service", "parameters": {...}}` + "`" + `,
-//     "NewConfigLoader": ` + "`" + `{"description": "NewConfigLoader creates a new config loader", "parameters": {...}}` + "`" + `,
-// }
-
-func getMethodInfo(methodName string) (*apigen.MethodDescription, error) {
-    jsonStr, exists := GeneratedAPIDefs[methodName]
-    if !exists {
-        return nil, fmt.Errorf("method %s not found", methodName)
-    }
-
-    var methodDesc apigen.MethodDescription
-    err := json.Unmarshal([]byte(jsonStr), &methodDesc)
-    if err != nil {
-        return nil, err
-    }
-
-    return &methodDesc, nil
-}
-
-func main() {
-    // Get method info for NewExampleService
-    methodInfo, err := getMethodInfo("NewExampleService")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Printf("Method: %s\n", methodInfo.Description)
-    fmt.Printf("Parameters: %+v\n", methodInfo.Parameters)
-}
-`)
+	fmt.Println("The generated map allows runtime access to API definitions.")
+	fmt.Println("Each method name maps to its JSON description string.")
 
 	// Show the difference
 	fmt.Println("4. Comparison:")

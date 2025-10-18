@@ -153,7 +153,7 @@ func extractParameterInfo(field *ast.Field, fset *token.FileSet, typeDefs map[st
 	if ident, ok := field.Type.(*ast.Ident); ok {
 		if typeSpec, exists := typeDefs[ident.Name]; exists {
 			if structType, ok := typeSpec.Type.(*ast.StructType); ok {
-				fields, err := extractStructFields(structType, fset)
+				fields, err := extractStructFields(structType, fset, typeDefs)
 				if err == nil {
 					paramInfo.Fields = fields
 				}
@@ -165,7 +165,7 @@ func extractParameterInfo(field *ast.Field, fset *token.FileSet, typeDefs map[st
 }
 
 // extractStructFields extracts field information from a struct type
-func extractStructFields(structType *ast.StructType, fset *token.FileSet) (map[string]FieldInfo, error) {
+func extractStructFields(structType *ast.StructType, fset *token.FileSet, typeDefs map[string]*ast.TypeSpec) (map[string]FieldInfo, error) {
 	fields := make(map[string]FieldInfo)
 
 	if structType.Fields == nil {
@@ -187,6 +187,18 @@ func extractStructFields(structType *ast.StructType, fset *token.FileSet) (map[s
 			annotations, err := parseStructTags(field.Tag.Value)
 			if err == nil {
 				fieldInfo.Annotations = annotations
+			}
+		}
+
+		// If this field is a custom struct type defined in the same file, extract its fields recursively
+		if ident, ok := field.Type.(*ast.Ident); ok {
+			if typeSpec, exists := typeDefs[ident.Name]; exists {
+				if nestedStructType, ok := typeSpec.Type.(*ast.StructType); ok {
+					nestedFields, err := extractStructFields(nestedStructType, fset, typeDefs)
+					if err == nil {
+						fieldInfo.Fields = nestedFields
+					}
+				}
 			}
 		}
 

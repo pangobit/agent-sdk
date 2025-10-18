@@ -21,9 +21,10 @@ type ParameterInfo struct {
 
 // FieldInfo contains information about a struct field
 type FieldInfo struct {
-	Type        string            `json:"type"`
-	Description string            `json:"description,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
+	Type        string                 `json:"type"`
+	Description string                 `json:"description,omitempty"`
+	Annotations map[string]string      `json:"annotations,omitempty"`
+	Fields      map[string]FieldInfo   `json:"fields,omitempty"`
 }
 
 // ParseStrategy defines how to filter methods

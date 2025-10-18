@@ -405,6 +405,154 @@ func HandleRequest(id int, name string) error {
 	}
 }
 
+func TestNestedStructParsing(t *testing.T) {
+	testFile := "test_nested.go"
+	testContent := `package test
+
+// Address represents a physical address
+type Address struct {
+	Street  string ` + "`" + `json:"street"` + "`" + `
+	City    string ` + "`" + `json:"city"` + "`" + `
+	State   string ` + "`" + `json:"state"` + "`" + `
+	ZipCode string ` + "`" + `json:"zipCode"` + "`" + `
+}
+
+// Company represents a company with nested address
+type Company struct {
+	Name    string  ` + "`" + `json:"name"` + "`" + `
+	Address Address ` + "`" + `json:"address"` + "`" + `
+}
+
+// Employee represents an employee with nested company
+type Employee struct {
+	ID      string  ` + "`" + `json:"id"` + "`" + `
+	Name    string  ` + "`" + `json:"name"` + "`" + `
+	Company Company ` + "`" + `json:"company"` + "`" + `
+}
+
+// ProcessEmployee processes employee data
+func ProcessEmployee(emp Employee) error {
+	return nil
+}
+`
+	err := writeTestFile(testFile, testContent)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	defer removeTestFile(testFile)
+
+	config := WithMethodList("ProcessEmployee").SetAPIName("TestAPI")
+	result, err := GenerateFromFile(testFile, config)
+	if err != nil {
+		t.Fatalf("failed to generate description: %v", err)
+	}
+
+	method, exists := result.Methods["ProcessEmployee"]
+	if !exists {
+		t.Fatal("ProcessEmployee method not found")
+	}
+
+	empParam, exists := method.Parameters["emp"]
+	if !exists {
+		t.Fatal("emp parameter not found")
+	}
+
+	if empParam.Type != "Employee" {
+		t.Errorf("expected emp type 'Employee', got '%s'", empParam.Type)
+	}
+
+	// Check that Employee fields exist
+	employeeFields := empParam.Fields
+	if employeeFields == nil {
+		t.Fatal("Employee should have fields")
+	}
+
+	// Check Employee.ID field
+	idField, exists := employeeFields["ID"]
+	if !exists {
+		t.Error("Employee.ID field not found")
+	} else {
+		if idField.Type != "string" {
+			t.Errorf("Employee.ID: expected type 'string', got '%s'", idField.Type)
+		}
+		if idField.Annotations["json"] != "id" {
+			t.Errorf("Employee.ID: expected json annotation 'id', got '%s'", idField.Annotations["json"])
+		}
+	}
+
+	// Check Employee.Company field (nested struct)
+	companyField, exists := employeeFields["Company"]
+	if !exists {
+		t.Error("Employee.Company field not found")
+	} else {
+		if companyField.Type != "Company" {
+			t.Errorf("Employee.Company: expected type 'Company', got '%s'", companyField.Type)
+		}
+		if companyField.Annotations["json"] != "company" {
+			t.Errorf("Employee.Company: expected json annotation 'company', got '%s'", companyField.Annotations["json"])
+		}
+
+		// Check nested Company fields
+		companyFields := companyField.Fields
+		if companyFields == nil {
+			t.Fatal("Company should have nested fields")
+		}
+
+		// Check Company.Name field
+		nameField, exists := companyFields["Name"]
+		if !exists {
+			t.Error("Company.Name field not found")
+		} else {
+			if nameField.Type != "string" {
+				t.Errorf("Company.Name: expected type 'string', got '%s'", nameField.Type)
+			}
+			if nameField.Annotations["json"] != "name" {
+				t.Errorf("Company.Name: expected json annotation 'name', got '%s'", nameField.Annotations["json"])
+			}
+		}
+
+		// Check Company.Address field (deeply nested)
+		addressField, exists := companyFields["Address"]
+		if !exists {
+			t.Error("Company.Address field not found")
+		} else {
+			if addressField.Type != "Address" {
+				t.Errorf("Company.Address: expected type 'Address', got '%s'", addressField.Type)
+			}
+			if addressField.Annotations["json"] != "address" {
+				t.Errorf("Company.Address: expected json annotation 'address', got '%s'", addressField.Annotations["json"])
+			}
+
+			// Check deeply nested Address fields
+			addressFields := addressField.Fields
+			if addressFields == nil {
+				t.Fatal("Address should have nested fields")
+			}
+
+			expectedAddressFields := map[string]string{
+				"Street":  "street",
+				"City":    "city",
+				"State":   "state",
+				"ZipCode": "zipCode",
+			}
+
+			for fieldName, expectedJSON := range expectedAddressFields {
+				field, exists := addressFields[fieldName]
+				if !exists {
+					t.Errorf("Address.%s field not found", fieldName)
+				} else {
+					if field.Type != "string" {
+						t.Errorf("Address.%s: expected type 'string', got '%s'", fieldName, field.Type)
+					}
+					if field.Annotations["json"] != expectedJSON {
+						t.Errorf("Address.%s: expected json annotation '%s', got '%s'", fieldName, expectedJSON, field.Annotations["json"])
+					}
+				}
+			}
+		}
+	}
+}
+
 // Helper functions for testing
 func writeTestFile(filename, content string) error {
 	return writeFile(filename, content)
