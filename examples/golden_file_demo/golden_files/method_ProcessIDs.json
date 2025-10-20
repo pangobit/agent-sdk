@@ -1,0 +1,16 @@
+{
+  "apiName": "GoldenFileDemo",
+  "methods": {
+    "ProcessIDs": {
+      "description": "ProcessIDs processes a slice of integers",
+      "parameters": {
+        "ids": {
+          "type": "[]int",
+          "elementType": {
+            "type": "int"
+          }
+        }
+      }
+    }
+  }
+}

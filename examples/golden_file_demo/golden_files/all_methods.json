@@ -1,0 +1,409 @@
+{
+  "apiName": "GoldenFileDemo",
+  "methods": {
+    "HandleBasicTypes": {
+      "description": "HandleBasicTypes processes basic Go types @param message A simple string message @param count An integer count @param enabled A boolean flag @param rate A floating point rate",
+      "parameters": {
+        "count": {
+          "type": "int"
+        },
+        "enabled": {
+          "type": "bool"
+        },
+        "message": {
+          "type": "string"
+        },
+        "rate": {
+          "type": "float64"
+        }
+      }
+    },
+    "ProcessCompany": {
+      "description": "ProcessCompany processes a company with nested address",
+      "parameters": {
+        "company": {
+          "type": "Company",
+          "fields": {
+            "Address": {
+              "type": "Address",
+              "annotations": {
+                "json": "address"
+              },
+              "fields": {
+                "City": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "city",
+                    "validate": "required"
+                  }
+                },
+                "State": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "state",
+                    "validate": "required"
+                  }
+                },
+                "Street": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "street",
+                    "validate": "required"
+                  }
+                },
+                "ZipCode": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "zipCode",
+                    "validate": "required"
+                  }
+                }
+              }
+            },
+            "Name": {
+              "type": "string",
+              "annotations": {
+                "json": "name",
+                "validate": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ProcessData": {
+      "description": "ProcessData processes a simple string map",
+      "parameters": {
+        "data": {
+          "type": "map[string]string",
+          "keyType": {
+            "type": "string"
+          },
+          "valueType": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ProcessIDs": {
+      "description": "ProcessIDs processes a slice of integers",
+      "parameters": {
+        "ids": {
+          "type": "[]int",
+          "elementType": {
+            "type": "int"
+          }
+        }
+      }
+    },
+    "ProcessProfiles": {
+      "description": "ProcessProfiles processes a map of user profiles",
+      "parameters": {
+        "profiles": {
+          "type": "map[string]Profile",
+          "keyType": {
+            "type": "string"
+          },
+          "valueType": {
+            "type": "Profile",
+            "fields": {
+              "Active": {
+                "type": "bool",
+                "annotations": {
+                  "json": "active"
+                }
+              },
+              "Age": {
+                "type": "int",
+                "annotations": {
+                  "json": "age"
+                }
+              },
+              "Bio": {
+                "type": "string",
+                "annotations": {
+                  "json": "bio"
+                }
+              },
+              "Tags": {
+                "type": "[]string",
+                "annotations": {
+                  "json": "tags"
+                },
+                "elementType": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ProcessTeam": {
+      "description": "ProcessTeam processes a complex nested team structure",
+      "parameters": {
+        "team": {
+          "type": "Team",
+          "fields": {
+            "ID": {
+              "type": "int",
+              "annotations": {
+                "json": "id"
+              }
+            },
+            "Lead": {
+              "type": "User",
+              "annotations": {
+                "json": "lead"
+              },
+              "fields": {
+                "Email": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "email"
+                  }
+                },
+                "ID": {
+                  "type": "int",
+                  "annotations": {
+                    "json": "id"
+                  }
+                },
+                "IsActive": {
+                  "type": "bool",
+                  "annotations": {
+                    "json": "isActive"
+                  }
+                },
+                "Name": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "name"
+                  }
+                },
+                "Tags": {
+                  "type": "[]string",
+                  "annotations": {
+                    "json": "tags,omitempty"
+                  },
+                  "elementType": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "Name": {
+              "type": "string",
+              "annotations": {
+                "json": "name"
+              }
+            },
+            "Projects": {
+              "type": "[]Project",
+              "annotations": {
+                "json": "projects"
+              },
+              "elementType": {
+                "type": "Project",
+                "fields": {
+                  "Description": {
+                    "type": "string",
+                    "annotations": {
+                      "json": "description"
+                    }
+                  },
+                  "ID": {
+                    "type": "int",
+                    "annotations": {
+                      "json": "id"
+                    }
+                  },
+                  "Members": {
+                    "type": "[]User",
+                    "annotations": {
+                      "json": "members"
+                    },
+                    "elementType": {
+                      "type": "User",
+                      "fields": {
+                        "Email": {
+                          "type": "string",
+                          "annotations": {
+                            "json": "email"
+                          }
+                        },
+                        "ID": {
+                          "type": "int",
+                          "annotations": {
+                            "json": "id"
+                          }
+                        },
+                        "IsActive": {
+                          "type": "bool",
+                          "annotations": {
+                            "json": "isActive"
+                          }
+                        },
+                        "Name": {
+                          "type": "string",
+                          "annotations": {
+                            "json": "name"
+                          }
+                        },
+                        "Tags": {
+                          "type": "[]string",
+                          "annotations": {
+                            "json": "tags,omitempty"
+                          },
+                          "elementType": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "Metadata": {
+                    "type": "map[string]string",
+                    "annotations": {
+                      "json": "metadata"
+                    },
+                    "keyType": {
+                      "type": "string"
+                    },
+                    "valueType": {
+                      "type": "string"
+                    }
+                  },
+                  "Name": {
+                    "type": "string",
+                    "annotations": {
+                      "json": "name"
+                    }
+                  },
+                  "Owner": {
+                    "type": "User",
+                    "annotations": {
+                      "json": "owner"
+                    },
+                    "fields": {
+                      "Email": {
+                        "type": "string",
+                        "annotations": {
+                          "json": "email"
+                        }
+                      },
+                      "ID": {
+                        "type": "int",
+                        "annotations": {
+                          "json": "id"
+                        }
+                      },
+                      "IsActive": {
+                        "type": "bool",
+                        "annotations": {
+                          "json": "isActive"
+                        }
+                      },
+                      "Name": {
+                        "type": "string",
+                        "annotations": {
+                          "json": "name"
+                        }
+                      },
+                      "Tags": {
+                        "type": "[]string",
+                        "annotations": {
+                          "json": "tags,omitempty"
+                        },
+                        "elementType": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Settings": {
+              "type": "map[string]string",
+              "annotations": {
+                "json": "settings"
+              },
+              "keyType": {
+                "type": "string"
+              },
+              "valueType": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ProcessUsers": {
+      "description": "ProcessUsers processes a slice of users",
+      "parameters": {
+        "users": {
+          "type": "[]User",
+          "elementType": {
+            "type": "User",
+            "fields": {
+              "Email": {
+                "type": "string",
+                "annotations": {
+                  "json": "email"
+                }
+              },
+              "ID": {
+                "type": "int",
+                "annotations": {
+                  "json": "id"
+                }
+              },
+              "IsActive": {
+                "type": "bool",
+                "annotations": {
+                  "json": "isActive"
+                }
+              },
+              "Name": {
+                "type": "string",
+                "annotations": {
+                  "json": "name"
+                }
+              },
+              "Tags": {
+                "type": "[]string",
+                "annotations": {
+                  "json": "tags,omitempty"
+                },
+                "elementType": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ScheduleEvent": {
+      "description": "ScheduleEvent schedules an event with time types",
+      "parameters": {
+        "name": {
+          "type": "string"
+        },
+        "scheduledAt": {
+          "type": "time.Time"
+        }
+      }
+    },
+    "UpdateConfig": {
+      "description": "UpdateConfig updates configuration with pointer types",
+      "parameters": {
+        "config": {
+          "type": "*Config"
+        }
+      }
+    }
+  }
+}

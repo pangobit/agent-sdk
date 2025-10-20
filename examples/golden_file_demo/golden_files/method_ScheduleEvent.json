@@ -1,0 +1,16 @@
+{
+  "apiName": "GoldenFileDemo",
+  "methods": {
+    "ScheduleEvent": {
+      "description": "ScheduleEvent schedules an event with time types",
+      "parameters": {
+        "name": {
+          "type": "string"
+        },
+        "scheduledAt": {
+          "type": "time.Time"
+        }
+      }
+    }
+  }
+}

@@ -54,13 +54,15 @@ import (
 
 // DefaultParser is the default implementation of Parser
 type DefaultParser struct {
-	fset *token.FileSet
+	fset     *token.FileSet
+	registry *TypeRegistry
 }
 
-// NewParser creates a new parser instance
+// NewParser creates a new parser instance with an empty type registry
 func NewParser() Parser {
 	return &DefaultParser{
-		fset: token.NewFileSet(),
+		fset:     token.NewFileSet(),
+		registry: NewTypeRegistry(),
 	}
 }
 
@@ -84,6 +86,9 @@ func (p *DefaultParser) ParsePackage(packagePath string) ([]RawMethod, error) {
 		}
 	}
 
+	// Resolve all type references after parsing all files
+	p.registry.ResolveAllTypes()
+
 	return allMethods, nil
 }
 
@@ -94,27 +99,61 @@ func (p *DefaultParser) ParseSingleFile(filePath string) ([]RawMethod, error) {
 		return nil, fmt.Errorf("failed to parse file: %w", err)
 	}
 
-	return p.parseFile(file)
+	methods, err := p.parseFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve all type references after parsing
+	p.registry.ResolveAllTypes()
+
+	return methods, nil
 }
 
-// parseFile parses methods from an AST file
+// parseFile parses methods and type declarations from an AST file
 func (p *DefaultParser) parseFile(file *ast.File) ([]RawMethod, error) {
 	var methods []RawMethod
 
 	for _, decl := range file.Decls {
-		funcDecl, ok := decl.(*ast.FuncDecl)
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			method, err := p.parseMethod(d)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse method %s: %w", d.Name.Name, err)
+			}
+			methods = append(methods, method)
+
+		case *ast.GenDecl:
+			if d.Tok == token.TYPE {
+				err := p.parseTypeDeclarations(d)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse type declarations: %w", err)
+				}
+			}
+		}
+	}
+
+	return methods, nil
+}
+
+// parseTypeDeclarations parses type declarations from a GenDecl and adds them to the registry
+func (p *DefaultParser) parseTypeDeclarations(genDecl *ast.GenDecl) error {
+	for _, spec := range genDecl.Specs {
+		typeSpec, ok := spec.(*ast.TypeSpec)
 		if !ok {
 			continue
 		}
 
-		method, err := p.parseMethod(funcDecl)
+		parsedType, err := p.parseType(typeSpec.Type)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse method %s: %w", funcDecl.Name.Name, err)
+			return fmt.Errorf("failed to parse type %s: %w", typeSpec.Name.Name, err)
 		}
-		methods = append(methods, method)
+
+		parsedType.Name = typeSpec.Name.Name
+		p.registry.AddType(typeSpec.Name.Name, parsedType)
 	}
 
-	return methods, nil
+	return nil
 }
 
 // parseMethod converts an AST function declaration to a RawMethod
@@ -159,6 +198,11 @@ func (p *DefaultParser) parseFieldList(field *ast.Field) ([]RawParam, error) {
 	return params, nil
 }
 
+// GetRegistry returns the type registry populated during parsing
+func (p *DefaultParser) GetRegistry() *TypeRegistry {
+	return p.registry
+}
+
 // extractDocComments extracts documentation comments from a function
 func (p *DefaultParser) extractDocComments(funcDecl *ast.FuncDecl) []string {
 	if funcDecl.Doc == nil || len(funcDecl.Doc.List) == 0 {
@@ -178,13 +222,15 @@ func (p *DefaultParser) extractDocComments(funcDecl *ast.FuncDecl) []string {
 
 // DefaultTransformer is the default implementation of Transformer
 type DefaultTransformer struct {
-	registry *TypeRegistry
+	registry  *TypeRegistry
+	resolver  *TypeResolver
 }
 
 // NewTransformer creates a new transformer with the given type registry
 func NewTransformer(registry *TypeRegistry) Transformer {
 	return &DefaultTransformer{
 		registry: registry,
+		resolver: NewTypeResolver(registry),
 	}
 }
 
@@ -233,6 +279,19 @@ func (t *DefaultTransformer) transformParam(param RawParam) (EnrichedParam, erro
 		Type: *parsedType,
 	}
 
+	// Try to resolve the type using the resolver
+	if parsedType.Kind == TypeKindBasic && parsedType.Name != "" {
+		if resolvedType, err := t.resolver.ResolveType(parsedType.Name); err == nil {
+			enriched.ResolvedType = resolvedType
+		}
+	} else {
+		// For complex types, create a resolved version
+		resolved, err := t.resolver.resolveParsedType(parsedType)
+		if err == nil {
+			enriched.ResolvedType = resolved
+		}
+	}
+
 	// If this is a struct type defined in our registry, resolve the field details
 	if parsedType.Kind == TypeKindBasic || (parsedType.Kind == TypeKindSelector && parsedType.Package == "") {
 		if fieldType, exists := t.registry.GetType(parsedType.Name); exists && fieldType.Kind == TypeKindStruct {
@@ -246,10 +305,49 @@ func (t *DefaultTransformer) transformParam(param RawParam) (EnrichedParam, erro
 	return enriched, nil
 }
 
+// resolveType recursively resolves type references in the registry
+func (t *DefaultTransformer) resolveType(pt *ParsedType) error {
+	// Resolve named types
+	if pt.Kind == TypeKindBasic && pt.Name != "" {
+		if resolvedType, exists := t.registry.GetType(pt.Name); exists {
+			// Copy the resolved type's fields
+			pt.Fields = resolvedType.Fields
+			pt.Kind = resolvedType.Kind
+		}
+	}
+
+	// Recursively resolve nested types
+	if pt.KeyType != nil {
+		err := t.resolveType(pt.KeyType)
+		if err != nil {
+			return err
+		}
+	}
+	if pt.ValueType != nil {
+		err := t.resolveType(pt.ValueType)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Resolve fields
+	for i := range pt.Fields {
+		err := t.resolveType(&pt.Fields[i].Type)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // parseType converts an AST expression to a ParsedType
 func (t *DefaultTransformer) parseType(expr ast.Expr) (*ParsedType, error) {
 	switch e := expr.(type) {
 	case *ast.Ident:
+		if e.Name == "struct" {
+			return &ParsedType{Kind: TypeKindStruct}, nil
+		}
 		return &ParsedType{
 			Kind: TypeKindBasic,
 			Name: e.Name,
@@ -271,16 +369,24 @@ func (t *DefaultTransformer) parseType(expr ast.Expr) (*ParsedType, error) {
 		if err != nil {
 			return nil, err
 		}
-		elemType.IsPointer = true
-		return elemType, nil
+		// Create a new pointer type that wraps the element type
+		return &ParsedType{
+			Kind:    TypeKindPointer,
+			IsPointer: true,
+			KeyType: elemType, // KeyType holds the pointed-to type for pointers
+		}, nil
 
 	case *ast.ArrayType:
 		elemType, err := t.parseType(e.Elt)
 		if err != nil {
 			return nil, err
 		}
-		elemType.IsSlice = true
-		return elemType, nil
+		// Create a new slice type that wraps the element type
+		return &ParsedType{
+			Kind:    TypeKindSlice,
+			IsSlice: true,
+			KeyType: elemType, // KeyType holds the element type for slices
+		}, nil
 
 	case *ast.MapType:
 		keyType, err := t.parseType(e.Key)
@@ -298,12 +404,217 @@ func (t *DefaultTransformer) parseType(expr ast.Expr) (*ParsedType, error) {
 			ValueType: valueType,
 		}, nil
 
+	case *ast.StructType:
+		parsedType := &ParsedType{
+			Kind: TypeKindStruct,
+		}
+
+		if e.Fields != nil {
+			for _, field := range e.Fields.List {
+				parsedFields, err := t.parseStructField(field)
+				if err != nil {
+					return nil, err
+				}
+				parsedType.Fields = append(parsedType.Fields, parsedFields...)
+			}
+		}
+
+		return parsedType, nil
+
 	default:
 		return &ParsedType{
 			Kind: TypeKindUnknown,
 			Name: "unknown",
 		}, nil
 	}
+}
+func (p *DefaultParser) parseType(expr ast.Expr) (*ParsedType, error) {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		if e.Name == "struct" {
+			return &ParsedType{Kind: TypeKindStruct}, nil
+		}
+		return &ParsedType{
+			Kind: TypeKindBasic,
+			Name: e.Name,
+		}, nil
+
+	case *ast.SelectorExpr:
+		pkg, ok := e.X.(*ast.Ident)
+		if !ok {
+			return nil, fmt.Errorf("invalid selector expression")
+		}
+		return &ParsedType{
+			Kind:    TypeKindSelector,
+			Name:    e.Sel.Name,
+			Package: pkg.Name,
+		}, nil
+
+	case *ast.StarExpr:
+		elemType, err := p.parseType(e.X)
+		if err != nil {
+			return nil, err
+		}
+		// Create a new pointer type that wraps the element type
+		return &ParsedType{
+			Kind:    TypeKindPointer,
+			IsPointer: true,
+			KeyType: elemType, // KeyType holds the pointed-to type for pointers
+		}, nil
+
+	case *ast.ArrayType:
+		elemType, err := p.parseType(e.Elt)
+		if err != nil {
+			return nil, err
+		}
+		// Create a new slice type that wraps the element type
+		return &ParsedType{
+			Kind:    TypeKindSlice,
+			IsSlice: true,
+			KeyType: elemType, // KeyType holds the element type for slices
+		}, nil
+
+	case *ast.MapType:
+		keyType, err := p.parseType(e.Key)
+		if err != nil {
+			return nil, err
+		}
+		valueType, err := p.parseType(e.Value)
+		if err != nil {
+			return nil, err
+		}
+		return &ParsedType{
+			Kind:      TypeKindMap,
+			IsMap:     true,
+			KeyType:   keyType,
+			ValueType: valueType,
+		}, nil
+
+	case *ast.StructType:
+		parsedType := &ParsedType{
+			Kind: TypeKindStruct,
+		}
+
+		if e.Fields != nil {
+			for _, field := range e.Fields.List {
+				parsedFields, err := p.parseStructField(field)
+				if err != nil {
+					return nil, err
+				}
+				parsedType.Fields = append(parsedType.Fields, parsedFields...)
+			}
+		}
+
+		return parsedType, nil
+
+	default:
+		return &ParsedType{
+			Kind: TypeKindUnknown,
+			Name: "unknown",
+		}, nil
+	}
+}
+
+// parseStructField converts AST struct field to ParsedField
+func (p *DefaultParser) parseStructField(field *ast.Field) ([]ParsedField, error) {
+	fieldType, err := p.parseType(field.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	var tags map[string]string
+	if field.Tag != nil {
+		tags, err = parseStructTags(field.Tag.Value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var fields []ParsedField
+	if len(field.Names) == 0 {
+		// Embedded field
+		fields = append(fields, ParsedField{
+			Name: fieldType.Name,
+			Type: *fieldType,
+			Tags: tags,
+		})
+	} else {
+		// Named fields
+		for _, name := range field.Names {
+			fields = append(fields, ParsedField{
+				Name: name.Name,
+				Type: *fieldType,
+				Tags: tags,
+			})
+		}
+	}
+
+	return fields, nil
+}
+
+// parseStructField converts AST struct field to ParsedField
+func (t *DefaultTransformer) parseStructField(field *ast.Field) ([]ParsedField, error) {
+	fieldType, err := t.parseType(field.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	var tags map[string]string
+	if field.Tag != nil {
+		tags, err = parseStructTags(field.Tag.Value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var fields []ParsedField
+	if len(field.Names) == 0 {
+		// Embedded field
+		fields = append(fields, ParsedField{
+			Name: fieldType.Name,
+			Type: *fieldType,
+			Tags: tags,
+		})
+	} else {
+		// Named fields
+		for _, name := range field.Names {
+			fields = append(fields, ParsedField{
+				Name: name.Name,
+				Type: *fieldType,
+				Tags: tags,
+			})
+		}
+	}
+
+	return fields, nil
+}
+
+// parseStructTags parses Go struct tags into a map
+func parseStructTags(tagStr string) (map[string]string, error) {
+	annotations := make(map[string]string)
+
+	// Remove surrounding quotes if present
+	tagStr = strings.Trim(tagStr, "`")
+
+	// Simple parser for struct tags
+	parts := strings.Fields(tagStr)
+	for _, part := range parts {
+		// Split on first colon
+		colonIndex := strings.Index(part, ":")
+		if colonIndex == -1 {
+			continue
+		}
+
+		key := part[:colonIndex]
+		value := part[colonIndex+1:]
+
+		// Remove surrounding quotes
+		value = strings.Trim(value, `"`)
+
+		annotations[key] = value
+	}
+
+	return annotations, nil
 }
 
 // JSONGenerator generates JSON output
@@ -464,19 +775,40 @@ func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
 
 		for _, param := range method.Parameters {
 			paramInfo := ParameterInfo{
-				Type: param.Type.Name,
+				Type: typeToString(param.Type),
 			}
 
-			// Add fields if this parameter is a struct
-			if param.Field != nil && len(param.Field.Type.Fields) > 0 {
-				paramInfo.Fields = make(map[string]FieldInfo)
-				for _, field := range param.Field.Type.Fields {
-					fieldInfo := FieldInfo{
-						Type:        field.Type.Name,
-						Annotations: field.Tags,
+			// Use resolved type information if available
+			if param.ResolvedType != nil {
+				paramInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType)
+				
+				// Handle the parameter type itself being a slice or map
+				if param.ResolvedType.IsSlice && param.ResolvedType.KeyType != nil {
+					elementTypeInfo := FieldInfo{
+						Type: resolvedTypeToString(param.ResolvedType.KeyType),
 					}
-					paramInfo.Fields[field.Name] = fieldInfo
+					elementTypeInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType.KeyType)
+					// For parameter-level slices/maps, we need to return this as the main info
+					paramInfo.ElementType = &elementTypeInfo
+				} else if param.ResolvedType.IsMap {
+					if param.ResolvedType.KeyType != nil {
+						keyTypeInfo := FieldInfo{
+							Type: resolvedTypeToString(param.ResolvedType.KeyType),
+						}
+						keyTypeInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType.KeyType)
+						paramInfo.KeyType = &keyTypeInfo
+					}
+					if param.ResolvedType.ValueType != nil {
+						valueTypeInfo := FieldInfo{
+							Type: resolvedTypeToString(param.ResolvedType.ValueType),
+						}
+						valueTypeInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType.ValueType)
+						paramInfo.ValueType = &valueTypeInfo
+					}
 				}
+			} else {
+				// Fallback to old logic
+				paramInfo.Fields = buildFieldInfo(param.Type)
 			}
 
 			methodDesc.Parameters[param.Name] = paramInfo
@@ -486,6 +818,147 @@ func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
 	}
 
 	return desc
+}
+
+// buildFieldInfo recursively builds field information for a parsed type
+func buildFieldInfo(pt ParsedType) map[string]FieldInfo {
+	fields := make(map[string]FieldInfo)
+
+	// If it's a struct, add its direct fields
+	if pt.Kind == TypeKindStruct && len(pt.Fields) > 0 {
+		for _, field := range pt.Fields {
+			fieldInfo := FieldInfo{
+				Type:        typeToString(field.Type),
+				Annotations: field.Tags,
+			}
+			// Recursively build nested fields
+			fieldInfo.Fields = buildFieldInfo(field.Type)
+			
+			// Handle nested slices and maps in struct fields
+			if field.Type.IsSlice && field.Type.KeyType != nil {
+				elementTypeInfo := FieldInfo{
+					Type: typeToString(*field.Type.KeyType),
+				}
+				elementTypeInfo.Fields = buildFieldInfo(*field.Type.KeyType)
+				fieldInfo.ElementType = &elementTypeInfo
+			}
+			
+			if field.Type.IsMap {
+				if field.Type.KeyType != nil {
+					keyTypeInfo := FieldInfo{
+						Type: typeToString(*field.Type.KeyType),
+					}
+					keyTypeInfo.Fields = buildFieldInfo(*field.Type.KeyType)
+					fieldInfo.KeyType = &keyTypeInfo
+				}
+				if field.Type.ValueType != nil {
+					valueTypeInfo := FieldInfo{
+						Type: typeToString(*field.Type.ValueType),
+					}
+					valueTypeInfo.Fields = buildFieldInfo(*field.Type.ValueType)
+					fieldInfo.ValueType = &valueTypeInfo
+				}
+			}
+			
+			fields[field.Name] = fieldInfo
+		}
+	}
+
+	return fields
+}
+
+// buildFieldInfoFromResolved recursively builds field information from a ResolvedType
+func buildFieldInfoFromResolved(rt *ResolvedType) map[string]FieldInfo {
+	fields := make(map[string]FieldInfo)
+
+	// If it's a struct, add its direct fields
+	if rt.Kind == TypeKindStruct && len(rt.Fields) > 0 {
+		for _, field := range rt.Fields {
+			fieldInfo := FieldInfo{
+				Type:        resolvedTypeToString(field.Type),
+				Annotations: field.Tags,
+			}
+			// Recursively build nested fields
+			fieldInfo.Fields = buildFieldInfoFromResolved(field.Type)
+			
+			// Handle nested slices and maps in struct fields
+			if field.Type.IsSlice && field.Type.KeyType != nil {
+				elementTypeInfo := FieldInfo{
+					Type: resolvedTypeToString(field.Type.KeyType),
+				}
+				elementTypeInfo.Fields = buildFieldInfoFromResolved(field.Type.KeyType)
+				fieldInfo.ElementType = &elementTypeInfo
+			}
+			
+			if field.Type.IsMap {
+				if field.Type.KeyType != nil {
+					keyTypeInfo := FieldInfo{
+						Type: resolvedTypeToString(field.Type.KeyType),
+					}
+					keyTypeInfo.Fields = buildFieldInfoFromResolved(field.Type.KeyType)
+					fieldInfo.KeyType = &keyTypeInfo
+				}
+				if field.Type.ValueType != nil {
+					valueTypeInfo := FieldInfo{
+						Type: resolvedTypeToString(field.Type.ValueType),
+					}
+					valueTypeInfo.Fields = buildFieldInfoFromResolved(field.Type.ValueType)
+					fieldInfo.ValueType = &valueTypeInfo
+				}
+			}
+			
+			fields[field.Name] = fieldInfo
+		}
+	}
+
+	return fields
+}
+
+// resolvedTypeToString converts a ResolvedType to its string representation
+func resolvedTypeToString(rt *ResolvedType) string {
+	if rt == nil {
+		return "unknown"
+	}
+	
+	if rt.IsPointer && rt.Underlying != nil {
+		return "*" + resolvedTypeToString(rt.Underlying)
+	}
+	if rt.IsSlice && rt.KeyType != nil {
+		return "[]" + resolvedTypeToString(rt.KeyType)
+	}
+	if rt.IsMap && rt.KeyType != nil && rt.ValueType != nil {
+		return fmt.Sprintf("map[%s]%s", resolvedTypeToString(rt.KeyType), resolvedTypeToString(rt.ValueType))
+	}
+	if rt.Package != "" {
+		return rt.Package + "." + rt.Name
+	}
+	if rt.Name != "" {
+		return rt.Name
+	}
+	return "unknown"
+}
+
+// typeToString converts a ParsedType to its string representation
+func typeToString(pt ParsedType) string {
+	if pt.IsPointer {
+		return "*" + typeToString(*pt.KeyType)
+	}
+	if pt.IsSlice {
+		return "[]" + typeToString(*pt.KeyType)
+	}
+	if pt.IsMap {
+		if pt.KeyType != nil && pt.ValueType != nil {
+			return fmt.Sprintf("map[%s]%s", typeToString(*pt.KeyType), typeToString(*pt.ValueType))
+		}
+		return "map[unknown]unknown"
+	}
+	if pt.Package != "" {
+		return pt.Package + "." + pt.Name
+	}
+	if pt.Name != "" {
+		return pt.Name
+	}
+	return "unknown"
 }
 
 // FilterByPrefix filters methods by prefix

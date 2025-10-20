@@ -1,0 +1,19 @@
+{
+  "apiName": "GoldenFileDemo",
+  "methods": {
+    "ProcessData": {
+      "description": "ProcessData processes a simple string map",
+      "parameters": {
+        "data": {
+          "type": "map[string]string",
+          "keyType": {
+            "type": "string"
+          },
+          "valueType": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

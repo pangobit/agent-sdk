@@ -1,0 +1,58 @@
+{
+  "apiName": "GoldenFileDemo",
+  "methods": {
+    "ProcessCompany": {
+      "description": "ProcessCompany processes a company with nested address",
+      "parameters": {
+        "company": {
+          "type": "Company",
+          "fields": {
+            "Address": {
+              "type": "Address",
+              "annotations": {
+                "json": "address"
+              },
+              "fields": {
+                "City": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "city",
+                    "validate": "required"
+                  }
+                },
+                "State": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "state",
+                    "validate": "required"
+                  }
+                },
+                "Street": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "street",
+                    "validate": "required"
+                  }
+                },
+                "ZipCode": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "zipCode",
+                    "validate": "required"
+                  }
+                }
+              }
+            },
+            "Name": {
+              "type": "string",
+              "annotations": {
+                "json": "name",
+                "validate": "required"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
