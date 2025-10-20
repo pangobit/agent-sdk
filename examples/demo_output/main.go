@@ -10,10 +10,10 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Golden File Demo: Comprehensive API Generation Examples ===")
+	fmt.Println("=== Demo Output: Comprehensive API Generation Examples ===")
 
-	// Create output directory for golden files
-	outputDir := "golden_files"
+	// Create output directory for demo files
+	outputDir := "demo_outputs"
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
@@ -62,7 +62,7 @@ func main() {
 	}
 
 	for _, f := range filters {
-		fmt.Printf("\n2. Generating golden file for filter: %s\n", f.name)
+		fmt.Printf("\n2. Generating demo file for filter: %s\n", f.name)
 
 		filtered := f.filter(methods)
 		if len(filtered) == 0 {
@@ -99,7 +99,7 @@ func main() {
 		}
 
 		// Create API description
-		desc := apigen.NewDescription("GoldenFileDemo", enriched)
+		desc := apigen.NewDescription("DemoAPI", enriched)
 
 		// Generate JSON
 		content, err := jsonGenerator.Generate(desc)
@@ -107,7 +107,7 @@ func main() {
 			log.Fatalf("Failed to generate JSON for %s: %v", f.name, err)
 		}
 
-		// Save to golden file
+		// Save to demo file
 		filename := filepath.Join(outputDir, fmt.Sprintf("%s.json", f.name))
 		content.FileName = filename
 
@@ -116,11 +116,11 @@ func main() {
 			log.Fatalf("Failed to write golden file for %s: %v", f.name, err)
 		}
 
-		fmt.Printf("   Generated golden file: %s (%d methods)\n", filename, len(enriched))
+		fmt.Printf("   Generated demo file: %s (%d methods)\n", filename, len(enriched))
 	}
 
 	// Generate individual method files for detailed inspection
-	fmt.Println("\n3. Generating individual method golden files...")
+	fmt.Println("\n3. Generating individual method demo files...")
 	allEnriched, err := transformer.Transform(methods)
 	if err != nil {
 		log.Fatalf("Failed to transform all methods: %v", err)
@@ -131,7 +131,7 @@ func main() {
 	for methodName, methodDesc := range desc.Methods {
 		// Create individual API description for this method
 		singleMethodDesc := apigen.APIDescription{
-			APIName:  "GoldenFileDemo",
+			APIName:  "DemoAPI",
 			Methods:  map[string]apigen.MethodDescription{methodName: methodDesc},
 		}
 
@@ -151,7 +151,7 @@ func main() {
 		fmt.Printf("   Generated method file: %s\n", filename)
 	}
 
-	fmt.Println("\n4. Golden file generation complete!")
+	fmt.Println("\n4. Demo file generation complete!")
 	fmt.Printf("   Check the '%s' directory to visually inspect the generated API descriptions.\n", outputDir)
 	fmt.Println("   Each file shows how different Go types are represented in the JSON API format.")
 

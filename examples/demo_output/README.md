@@ -1,6 +1,6 @@
-# Golden File Demo: Comprehensive API Generation Examples
+# Demo Output: Comprehensive API Generation Examples
 
-This example demonstrates all the different Go types and patterns supported by the `apigen` package. It generates "golden files" that can be visually inspected to verify correct API description generation.
+This example demonstrates all the different Go types and patterns supported by the `apigen` package. It generates demo output files that can be visually inspected to verify correct API description generation.
 
 ## Overview
 
@@ -17,17 +17,17 @@ The example showcases how various Go constructs are represented in the generated
 ## Running the Demo
 
 ```bash
-cd examples/golden_file_demo
+cd examples/demo_output
 go run main.go
 ```
 
 This will:
 1. Parse the `api` package containing comprehensive type examples
 2. Apply different filtering strategies to demonstrate various use cases
-3. Generate golden files in the `golden_files/` directory
+3. Generate demo files in the `demo_outputs/` directory
 4. Create individual method files for detailed inspection
 
-## Generated Golden Files
+## Generated Demo Files
 
 The demo generates several categories of golden files:
 
@@ -53,7 +53,7 @@ Each golden file contains a JSON structure like:
 
 ```json
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ProcessUsers": {
       "description": "processes a slice of users",
@@ -93,5 +93,4 @@ Some advanced features may not be fully implemented yet:
 - Complex generic types
 - Circular type references
 
-The golden files serve as both documentation and test fixtures for verifying these features as they're implemented.</content>
-<parameter name="file_path">examples/golden_file_demo/README.md
+The demo files serve as both documentation and examples for verifying these features.</content>
