@@ -88,14 +88,22 @@ func main() {
 	// First, demonstrate the API generation
 	fmt.Println("=== API Generation Demo ===")
 
-	// Generate API description from this file
-	config := apigen.WithMethodList("GetUserProfile", "UpdateUserProfile", "SearchUsers").
-		SetAPIName("UserServiceAPI")
+	// Generate API description from this file using new v2.0 API
+	parser := apigen.NewParser()
+	transformer := apigen.NewTransformer(apigen.NewTypeRegistry())
 
-	desc, err := apigen.GenerateFromFile("examples/apigen_web_server/main.go", config)
+	methods, err := parser.ParseSingleFile("examples/apigen_web_server/main.go")
 	if err != nil {
-		log.Fatalf("Failed to generate API description: %v", err)
+		log.Fatalf("Failed to parse methods: %v", err)
 	}
+
+	filtered := apigen.FilterByList(methods, []string{"GetUserProfile", "UpdateUserProfile", "SearchUsers"})
+	enriched, err := transformer.Transform(filtered)
+	if err != nil {
+		log.Fatalf("Failed to transform methods: %v", err)
+	}
+
+	desc := apigen.NewDescription("UserServiceAPI", enriched)
 
 	// Pretty print the JSON output
 	jsonData, err := json.MarshalIndent(desc, "", "  ")

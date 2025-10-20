@@ -12,8 +12,8 @@ import (
 
 func main() {
 	var (
-		packagePath = flag.String("package", "", "Package path to analyze (for package mode)")
-		filePath    = flag.String("file", "", "Go file to analyze (for file mode)")
+		packagePath = flag.String("package", "", "Package path to analyze (cannot use with -file)")
+		filePath    = flag.String("file", "", "Go file to analyze (cannot use with -package)")
 		outputFile  = flag.String("out", "", "Output Go file path")
 		constName   = flag.String("const", "", "Name of the generated constant")
 		apiName     = flag.String("api-name", "", "Name for the generated API")
@@ -60,60 +60,72 @@ func main() {
 		}
 	}
 
-	// Build configuration
-	config := buildConfig(*apiName, *methodList, *prefix, *suffix, *contains)
+	// New v2.0 API pipeline
+	parser := apigen.NewParser()
+	transformer := apigen.NewTransformer(apigen.NewTypeRegistry())
 
-	// Generate the file
+	// Parse methods
+	var methods []apigen.RawMethod
 	var err error
 	if *packagePath != "" {
-		if *mapOutput {
-			err = apigen.GenerateAndWriteGoFileAsMap(*packagePath, *outputFile, *constName, packageName, config)
-		} else {
-			err = apigen.GenerateAndWriteGoFile(*packagePath, *outputFile, *constName, packageName, config)
-		}
+		methods, err = parser.ParsePackage(*packagePath)
 	} else {
-		if *mapOutput {
-			err = apigen.GenerateAndWriteGoFileFromFileAsMap(*filePath, *outputFile, *constName, packageName, config)
-		} else {
-			err = apigen.GenerateAndWriteGoFileFromFile(*filePath, *outputFile, *constName, packageName, config)
-		}
+		methods, err = parser.ParseSingleFile(*filePath)
+	}
+	if err != nil {
+		log.Fatalf("Failed to parse: %v", err)
 	}
 
+	// Apply filtering
+	filteredMethods := applyFiltering(methods, *methodList, *prefix, *suffix, *contains)
+
+	// Transform methods
+	enrichedMethods, err := transformer.Transform(filteredMethods)
 	if err != nil {
-		log.Fatalf("Failed to generate API file: %v", err)
+		log.Fatalf("Failed to transform methods: %v", err)
+	}
+
+	// Create API description
+	desc := apigen.NewDescription(*apiName, enrichedMethods)
+
+	// Generate output
+	var content apigen.GeneratedContent
+	if *mapOutput {
+		generator := apigen.NewGoMapGenerator(packageName, *constName)
+		content, err = generator.Generate(desc)
+	} else {
+		generator := apigen.NewGoConstGenerator(packageName, *constName)
+		content, err = generator.Generate(desc)
+	}
+	if err != nil {
+		log.Fatalf("Failed to generate content: %v", err)
+	}
+
+	// Write to file
+	writer := apigen.NewWriter()
+	err = writer.WriteToFile(content, *outputFile)
+	if err != nil {
+		log.Fatalf("Failed to write file: %v", err)
 	}
 
 	fmt.Printf("Generated %s with constant %s\n", *outputFile, *constName)
 }
 
-func buildConfig(apiName, methodList, prefix, suffix, contains string) apigen.GeneratorConfig {
-	var config apigen.GeneratorConfig
-
-	// Set API name if provided
-	if apiName != "" {
-		config.APIName = apiName
-	}
-
-	// Apply filtering strategy
+func applyFiltering(methods []apigen.RawMethod, methodList, prefix, suffix, contains string) []apigen.RawMethod {
 	if methodList != "" {
 		// Parse comma-separated method list
-		methods := parseCommaSeparated(methodList)
-		config = apigen.WithMethodList(methods...).SetAPIName(apiName)
+		names := parseCommaSeparated(methodList)
+		return apigen.FilterByList(methods, names)
 	} else if prefix != "" {
-		config = apigen.WithPrefix(prefix).SetAPIName(apiName)
+		return apigen.FilterByPrefix(methods, prefix)
 	} else if suffix != "" {
-		config = apigen.WithSuffix(suffix).SetAPIName(apiName)
+		return apigen.FilterBySuffix(methods, suffix)
 	} else if contains != "" {
-		config = apigen.WithContains(contains).SetAPIName(apiName)
-	} else {
-		// Default: include all methods (no filtering)
-		config = apigen.GeneratorConfig{ExcludeHTTP: true}
-		if apiName != "" {
-			config.APIName = apiName
-		}
+		return apigen.FilterByContains(methods, contains)
 	}
 
-	return config
+	// No filtering - return all methods
+	return methods
 }
 
 func parseCommaSeparated(input string) []string {

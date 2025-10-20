@@ -15,10 +15,23 @@
 //
 // Example usage:
 //
-//	import "github.com/pangobit/agent-sdk/pkg/apigen"
+//	parser := apigen.NewParser()
+//	transformer := apigen.NewTransformer()
+//	generator := apigen.NewJSONGenerator()
 //
-//	config := apigen.WithPrefix("Handle")
-//	desc, err := apigen.GenerateFromPackage("./pkg/handlers", config)
+//	methods, err := parser.ParsePackage("./pkg/handlers")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	filtered := apigen.FilterByPrefix(methods, "Handle")
+//	enriched, err := transformer.Transform(filtered)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	desc := apigen.NewDescription("MyAPI", enriched)
+//	content, err := generator.Generate(desc)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -27,240 +40,535 @@
 package apigen
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 )
 
-// GenerateFromPackage generates API description from a Go package
-func GenerateFromPackage(packagePath string, config GeneratorConfig) (*APIDescription, error) {
-	fset := token.NewFileSet()
+// DefaultParser is the default implementation of Parser
+type DefaultParser struct {
+	fset *token.FileSet
+}
 
-	// Parse the package
-	pkgs, err := parser.ParseDir(fset, packagePath, func(info os.FileInfo) bool {
+// NewParser creates a new parser instance
+func NewParser() Parser {
+	return &DefaultParser{
+		fset: token.NewFileSet(),
+	}
+}
+
+// ParsePackage parses all Go files in a package directory
+func (p *DefaultParser) ParsePackage(packagePath string) ([]RawMethod, error) {
+	pkgs, err := parser.ParseDir(p.fset, packagePath, func(info os.FileInfo) bool {
 		return strings.HasSuffix(info.Name(), ".go") && !strings.HasSuffix(info.Name(), "_test.go")
 	}, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse package: %w", err)
 	}
 
-	// Collect all methods from all files
-	allMethods := make(map[string]*ast.FuncDecl)
-
+	var allMethods []RawMethod
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Files {
-			methods := extractMethods(file)
-			maps.Copy(allMethods, methods)
+			methods, err := p.parseFile(file)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse file %s: %w", p.fset.File(file.Pos()).Name(), err)
+			}
+			allMethods = append(allMethods, methods...)
 		}
 	}
 
-	// Filter methods based on strategy
-	filteredMethods := filterMethods(allMethods, config)
-
-	// Generate descriptions
-	methods := make(map[string]MethodDescription)
-
-	for name, method := range filteredMethods {
-		desc, err := generateMethodDescription(method, fset)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate description for %s: %w", name, err)
-		}
-		methods[name] = desc
-	}
-
-	apiDesc := &APIDescription{
-		APIName: config.APIName,
-		Methods: methods,
-	}
-
-	if apiDesc.APIName == "" {
-		// Use package name as default
-		for pkgName := range pkgs {
-			apiDesc.APIName = pkgName
-			break
-		}
-	}
-
-	return apiDesc, nil
+	return allMethods, nil
 }
 
-// GenerateFromFile generates API description from a single Go file
-func GenerateFromFile(filePath string, config GeneratorConfig) (*APIDescription, error) {
-	fset := token.NewFileSet()
-
-	file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+// ParseSingleFile parses a single Go file
+func (p *DefaultParser) ParseSingleFile(filePath string) ([]RawMethod, error) {
+	file, err := parser.ParseFile(p.fset, filePath, nil, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse file: %w", err)
 	}
 
-	methods := extractMethods(file)
-	filteredMethods := filterMethods(methods, config)
-
-	// Generate descriptions
-	methodDescriptions := make(map[string]MethodDescription)
-
-	for name, method := range filteredMethods {
-		desc, err := generateMethodDescription(method, fset)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate description for %s: %w", name, err)
-		}
-		methodDescriptions[name] = desc
-	}
-
-	apiDesc := &APIDescription{
-		APIName: config.APIName,
-		Methods: methodDescriptions,
-	}
-
-	if apiDesc.APIName == "" {
-		// Use filename (without extension) as default
-		base := filepath.Base(filePath)
-		apiDesc.APIName = strings.TrimSuffix(base, filepath.Ext(base))
-	}
-
-	return apiDesc, nil
+	return p.parseFile(file)
 }
 
-// GenerateAndWriteGoFile generates API description and writes it to a Go file as a string constant
-func GenerateAndWriteGoFile(packagePath, outputFile, constName, packageName string, config GeneratorConfig) error {
-	// Generate the API description
-	desc, err := GenerateFromPackage(packagePath, config)
-	if err != nil {
-		return fmt.Errorf("failed to generate API description: %w", err)
+// parseFile parses methods from an AST file
+func (p *DefaultParser) parseFile(file *ast.File) ([]RawMethod, error) {
+	var methods []RawMethod
+
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+
+		method, err := p.parseMethod(funcDecl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse method %s: %w", funcDecl.Name.Name, err)
+		}
+		methods = append(methods, method)
 	}
 
-	// Convert to JSON
+	return methods, nil
+}
+
+// parseMethod converts an AST function declaration to a RawMethod
+func (p *DefaultParser) parseMethod(funcDecl *ast.FuncDecl) (RawMethod, error) {
+	method := RawMethod{
+		Name:     funcDecl.Name.Name,
+		Position: p.fset.Position(funcDecl.Pos()),
+		Doc:      p.extractDocComments(funcDecl),
+	}
+
+	// Parse parameters
+	if funcDecl.Type.Params != nil {
+		for _, field := range funcDecl.Type.Params.List {
+			params, err := p.parseFieldList(field)
+			if err != nil {
+				return method, fmt.Errorf("failed to parse parameters: %w", err)
+			}
+			method.Params = append(method.Params, params...)
+		}
+	}
+
+	return method, nil
+}
+
+// parseFieldList converts AST field list to RawParams
+func (p *DefaultParser) parseFieldList(field *ast.Field) ([]RawParam, error) {
+	var params []RawParam
+
+	// Handle multiple parameter names with same type
+	if len(field.Names) == 0 {
+		// Anonymous parameter (shouldn't happen in valid Go, but handle gracefully)
+		return params, nil
+	}
+
+	for _, name := range field.Names {
+		params = append(params, RawParam{
+			Name: name.Name,
+			Type: field.Type,
+		})
+	}
+
+	return params, nil
+}
+
+// extractDocComments extracts documentation comments from a function
+func (p *DefaultParser) extractDocComments(funcDecl *ast.FuncDecl) []string {
+	if funcDecl.Doc == nil || len(funcDecl.Doc.List) == 0 {
+		return nil
+	}
+
+	var comments []string
+	for _, comment := range funcDecl.Doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+		if text != "" {
+			comments = append(comments, text)
+		}
+	}
+
+	return comments
+}
+
+// DefaultTransformer is the default implementation of Transformer
+type DefaultTransformer struct {
+	registry *TypeRegistry
+}
+
+// NewTransformer creates a new transformer with the given type registry
+func NewTransformer(registry *TypeRegistry) Transformer {
+	return &DefaultTransformer{
+		registry: registry,
+	}
+}
+
+// Transform converts RawMethods to EnrichedMethods with resolved types
+func (t *DefaultTransformer) Transform(methods []RawMethod) ([]EnrichedMethod, error) {
+	var enriched []EnrichedMethod
+
+	for _, method := range methods {
+		enrichedMethod, err := t.transformMethod(method)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform method %s: %w", method.Name, err)
+		}
+		enriched = append(enriched, enrichedMethod)
+	}
+
+	return enriched, nil
+}
+
+// transformMethod converts a RawMethod to an EnrichedMethod
+func (t *DefaultTransformer) transformMethod(method RawMethod) (EnrichedMethod, error) {
+	enriched := EnrichedMethod{
+		Name:        method.Name,
+		Description: strings.Join(method.Doc, " "),
+	}
+
+	for _, param := range method.Params {
+		enrichedParam, err := t.transformParam(param)
+		if err != nil {
+			return enriched, fmt.Errorf("failed to transform parameter %s: %w", param.Name, err)
+		}
+		enriched.Parameters = append(enriched.Parameters, enrichedParam)
+	}
+
+	return enriched, nil
+}
+
+// transformParam converts a RawParam to an EnrichedParam
+func (t *DefaultTransformer) transformParam(param RawParam) (EnrichedParam, error) {
+	parsedType, err := t.parseType(param.Type)
+	if err != nil {
+		return EnrichedParam{}, err
+	}
+
+	enriched := EnrichedParam{
+		Name: param.Name,
+		Type: *parsedType,
+	}
+
+	// If this is a struct type defined in our registry, resolve the field details
+	if parsedType.Kind == TypeKindBasic || (parsedType.Kind == TypeKindSelector && parsedType.Package == "") {
+		if fieldType, exists := t.registry.GetType(parsedType.Name); exists && fieldType.Kind == TypeKindStruct {
+			enriched.Field = &ParsedField{
+				Name: param.Name,
+				Type: *fieldType,
+			}
+		}
+	}
+
+	return enriched, nil
+}
+
+// parseType converts an AST expression to a ParsedType
+func (t *DefaultTransformer) parseType(expr ast.Expr) (*ParsedType, error) {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return &ParsedType{
+			Kind: TypeKindBasic,
+			Name: e.Name,
+		}, nil
+
+	case *ast.SelectorExpr:
+		pkg, ok := e.X.(*ast.Ident)
+		if !ok {
+			return nil, fmt.Errorf("invalid selector expression")
+		}
+		return &ParsedType{
+			Kind:    TypeKindSelector,
+			Name:    e.Sel.Name,
+			Package: pkg.Name,
+		}, nil
+
+	case *ast.StarExpr:
+		elemType, err := t.parseType(e.X)
+		if err != nil {
+			return nil, err
+		}
+		elemType.IsPointer = true
+		return elemType, nil
+
+	case *ast.ArrayType:
+		elemType, err := t.parseType(e.Elt)
+		if err != nil {
+			return nil, err
+		}
+		elemType.IsSlice = true
+		return elemType, nil
+
+	case *ast.MapType:
+		keyType, err := t.parseType(e.Key)
+		if err != nil {
+			return nil, err
+		}
+		valueType, err := t.parseType(e.Value)
+		if err != nil {
+			return nil, err
+		}
+		return &ParsedType{
+			Kind:      TypeKindMap,
+			IsMap:     true,
+			KeyType:   keyType,
+			ValueType: valueType,
+		}, nil
+
+	default:
+		return &ParsedType{
+			Kind: TypeKindUnknown,
+			Name: "unknown",
+		}, nil
+	}
+}
+
+// JSONGenerator generates JSON output
+type JSONGenerator struct{}
+
+// NewJSONGenerator creates a new JSON generator
+func NewJSONGenerator() Generator {
+	return &JSONGenerator{}
+}
+
+// Generate generates JSON representation of the API description
+func (g *JSONGenerator) Generate(desc APIDescription) (GeneratedContent, error) {
+	data, err := json.MarshalIndent(desc, "", "  ")
+	if err != nil {
+		return GeneratedContent{}, fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	return GeneratedContent{
+		Content: string(data),
+	}, nil
+}
+
+// GoConstGenerator generates Go constant declarations
+type GoConstGenerator struct {
+	packageName string
+	constName   string
+}
+
+// NewGoConstGenerator creates a new Go constant generator
+func NewGoConstGenerator(packageName, constName string) Generator {
+	return &GoConstGenerator{
+		packageName: packageName,
+		constName:   constName,
+	}
+}
+
+// Generate generates Go code with a constant containing JSON
+func (g *GoConstGenerator) Generate(desc APIDescription) (GeneratedContent, error) {
 	jsonData, err := json.MarshalIndent(desc, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal to JSON: %w", err)
+		return GeneratedContent{}, fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
-	// Generate Go file content
-	var content strings.Builder
-	content.WriteString("// Code generated by apigen; DO NOT EDIT.\n")
-	content.WriteString(fmt.Sprintf("// This file contains the API description for %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("package %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("// %s contains the JSON API description for this package\n", constName))
-	content.WriteString(fmt.Sprintf("const %s = `%s`\n", constName, jsonData))
-
-	// Write to file
-	err = os.WriteFile(outputFile, []byte(content.String()), 0o644)
+	tmpl, err := template.New("goConst").Parse(goConstTemplate)
 	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", outputFile, err)
+		return GeneratedContent{}, fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	return nil
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, struct {
+		PackageName string
+		ConstName   string
+		JSONContent string
+	}{
+		PackageName: g.packageName,
+		ConstName:   g.constName,
+		JSONContent: string(jsonData),
+	})
+	if err != nil {
+		return GeneratedContent{}, fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return GeneratedContent{
+		Content:     buf.String(),
+		PackageName: g.packageName,
+		ConstName:   g.constName,
+	}, nil
 }
 
-// GenerateAndWriteGoFileFromFile generates API description from a single file and writes it to a Go file as a string constant
-func GenerateAndWriteGoFileFromFile(inputFile, outputFile, constName, packageName string, config GeneratorConfig) error {
-	// Generate the API description
-	desc, err := GenerateFromFile(inputFile, config)
-	if err != nil {
-		return fmt.Errorf("failed to generate API description: %w", err)
-	}
-
-	// Convert to JSON
-	jsonData, err := json.MarshalIndent(desc, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal to JSON: %w", err)
-	}
-
-	// Generate Go file content
-	var content strings.Builder
-	content.WriteString("// Code generated by apigen; DO NOT EDIT.\n")
-	content.WriteString(fmt.Sprintf("// This file contains the API description for %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("package %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("// %s contains the JSON API description for this file\n", constName))
-	content.WriteString(fmt.Sprintf("const %s = `%s`\n", constName, jsonData))
-
-	// Write to file
-	err = os.WriteFile(outputFile, []byte(content.String()), 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", outputFile, err)
-	}
-
-	return nil
+// GoMapGenerator generates Go map declarations
+type GoMapGenerator struct {
+	packageName string
+	varName     string
 }
 
-// GenerateAndWriteGoFileAsMap generates API description and writes it to a Go file as a map[string]string constant where each key is a method name and each value is a JSON string containing description and parameters (omitting apiName field entirely)
-func GenerateAndWriteGoFileAsMap(packagePath, outputFile, constName, packageName string, config GeneratorConfig) error {
-	// Generate the API description
-	desc, err := GenerateFromPackage(packagePath, config)
+// NewGoMapGenerator creates a new Go map generator
+func NewGoMapGenerator(packageName, varName string) Generator {
+	return &GoMapGenerator{
+		packageName: packageName,
+		varName:     varName,
+	}
+}
+
+// Generate generates Go code with a map of method names to JSON strings
+func (g *GoMapGenerator) Generate(desc APIDescription) (GeneratedContent, error) {
+	tmpl, err := template.New("goMap").Parse(goMapTemplate)
 	if err != nil {
-		return fmt.Errorf("failed to generate API description: %w", err)
+		return GeneratedContent{}, fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	// Generate Go file content
-	var content strings.Builder
-	content.WriteString("// Code generated by apigen; DO NOT EDIT.\n")
-	content.WriteString(fmt.Sprintf("// This file contains the API description for %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("package %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("// %s contains the API description as a map of method names to JSON strings\n", constName))
-	content.WriteString(fmt.Sprintf("var %s = map[string]string{\n", constName))
-
-	// Add each method as a key-value pair
-	for methodName, methodDesc := range desc.Methods {
-		// Marshal just the method description (description + parameters)
-		jsonData, err := json.MarshalIndent(methodDesc, "", "  ")
+	methods := make(map[string]string)
+	for name, method := range desc.Methods {
+		jsonData, err := json.MarshalIndent(method, "", "  ")
 		if err != nil {
-			return fmt.Errorf("failed to marshal method %s: %w", methodName, err)
+			return GeneratedContent{}, fmt.Errorf("failed to marshal method %s: %w", name, err)
+		}
+		methods[name] = string(jsonData)
+	}
+
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, struct {
+		PackageName string
+		VarName     string
+		Methods     map[string]string
+	}{
+		PackageName: g.packageName,
+		VarName:     g.varName,
+		Methods:     methods,
+	})
+	if err != nil {
+		return GeneratedContent{}, fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return GeneratedContent{
+		Content:     buf.String(),
+		PackageName: g.packageName,
+		ConstName:   g.varName,
+	}, nil
+}
+
+// DefaultWriter is the default implementation of Writer
+type DefaultWriter struct{}
+
+// NewWriter creates a new writer instance
+func NewWriter() Writer {
+	return &DefaultWriter{}
+}
+
+// WriteToFile writes generated content to a file
+func (w *DefaultWriter) WriteToFile(content GeneratedContent, filePath string) error {
+	// Ensure directory exists
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	// Write file
+	err := os.WriteFile(filePath, []byte(content.Content), 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	return nil
+}
+
+// NewDescription creates an API description from enriched methods
+func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
+	desc := APIDescription{
+		APIName: apiName,
+		Methods: make(map[string]MethodDescription),
+	}
+
+	for _, method := range methods {
+		methodDesc := MethodDescription{
+			Description: method.Description,
+			Parameters:  make(map[string]ParameterInfo),
 		}
 
-		content.WriteString(fmt.Sprintf("\t\"%s\": `%s`,\n", methodName, jsonData))
-	}
+		for _, param := range method.Parameters {
+			paramInfo := ParameterInfo{
+				Type: param.Type.Name,
+			}
 
-	content.WriteString("}\n")
+			// Add fields if this parameter is a struct
+			if param.Field != nil && len(param.Field.Type.Fields) > 0 {
+				paramInfo.Fields = make(map[string]FieldInfo)
+				for _, field := range param.Field.Type.Fields {
+					fieldInfo := FieldInfo{
+						Type:        field.Type.Name,
+						Annotations: field.Tags,
+					}
+					paramInfo.Fields[field.Name] = fieldInfo
+				}
+			}
 
-	// Write to file
-	err = os.WriteFile(outputFile, []byte(content.String()), 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", outputFile, err)
-	}
-
-	return nil
-}
-
-// GenerateAndWriteGoFileFromFileAsMap generates API description from a single file and writes it to a Go file as a map[string]string constant where each key is a method name and each value is a JSON string containing description and parameters (omitting apiName field entirely)
-func GenerateAndWriteGoFileFromFileAsMap(inputFile, outputFile, constName, packageName string, config GeneratorConfig) error {
-	// Generate the API description
-	desc, err := GenerateFromFile(inputFile, config)
-	if err != nil {
-		return fmt.Errorf("failed to generate API description: %w", err)
-	}
-
-	// Generate Go file content
-	var content strings.Builder
-	content.WriteString("// Code generated by apigen; DO NOT EDIT.\n")
-	content.WriteString(fmt.Sprintf("// This file contains the API description for %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("package %s\n\n", packageName))
-	content.WriteString(fmt.Sprintf("// %s contains the API description as a map of method names to JSON strings\n", constName))
-	content.WriteString(fmt.Sprintf("var %s = map[string]string{\n", constName))
-
-	// Add each method as a key-value pair
-	for methodName, methodDesc := range desc.Methods {
-		// Marshal just the method description (description + parameters)
-		jsonData, err := json.MarshalIndent(methodDesc, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal method %s: %w", methodName, err)
+			methodDesc.Parameters[param.Name] = paramInfo
 		}
 
-		content.WriteString(fmt.Sprintf("\t\"%s\": `%s`,\n", methodName, jsonData))
+		desc.Methods[method.Name] = methodDesc
 	}
 
-	content.WriteString("}\n")
-
-	// Write to file
-	err = os.WriteFile(outputFile, []byte(content.String()), 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", outputFile, err)
-	}
-
-	return nil
+	return desc
 }
+
+// FilterByPrefix filters methods by prefix
+func FilterByPrefix(methods []RawMethod, prefix string) []RawMethod {
+	var filtered []RawMethod
+	for _, method := range methods {
+		if strings.HasPrefix(method.Name, prefix) {
+			filtered = append(filtered, method)
+		}
+	}
+	return filtered
+}
+
+// FilterBySuffix filters methods by suffix
+func FilterBySuffix(methods []RawMethod, suffix string) []RawMethod {
+	var filtered []RawMethod
+	for _, method := range methods {
+		if strings.HasSuffix(method.Name, suffix) {
+			filtered = append(filtered, method)
+		}
+	}
+	return filtered
+}
+
+// FilterByContains filters methods containing a substring
+func FilterByContains(methods []RawMethod, substr string) []RawMethod {
+	var filtered []RawMethod
+	for _, method := range methods {
+		if strings.Contains(method.Name, substr) {
+			filtered = append(filtered, method)
+		}
+	}
+	return filtered
+}
+
+// FilterByList filters methods by explicit list
+func FilterByList(methods []RawMethod, names []string) []RawMethod {
+	nameSet := make(map[string]bool)
+	for _, name := range names {
+		nameSet[name] = true
+	}
+
+	var filtered []RawMethod
+	for _, method := range methods {
+		if nameSet[method.Name] {
+			filtered = append(filtered, method)
+		}
+	}
+	return filtered
+}
+
+const goConstTemplate = `// Code generated by apigen; DO NOT EDIT.
+// This file contains the API description for {{.PackageName}}
+
+package {{.PackageName}}
+
+// {{.ConstName}} contains the JSON API description
+const {{.ConstName}} = ` + "`" + `{{.JSONContent}}` + "`" + `
+`
+
+const goMapTemplate = `// Code generated by apigen; DO NOT EDIT.
+// This file contains the API description for {{.PackageName}}
+
+package {{.PackageName}}
+
+import "encoding/json"
+
+// {{.VarName}} contains the API description as a map of method names to JSON strings
+var {{.VarName}} = map[string]string{
+{{- range $name, $json := .Methods}}
+	"{{$name}}": ` + "`{{$json}}`" + `,
+{{- end}}
+}
+
+// GetMethodDescription retrieves and parses a method description by name
+func GetMethodDescription(name string) (MethodDescription, error) {
+	jsonStr, exists := {{.VarName}}[name]
+	if !exists {
+		return MethodDescription{}, fmt.Errorf("method %s not found", name)
+	}
+
+	var desc MethodDescription
+	err := json.Unmarshal([]byte(jsonStr), &desc)
+	return desc, err
+}
+`
