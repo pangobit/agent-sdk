@@ -1,5 +1,5 @@
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ProcessIDs": {
       "description": "ProcessIDs processes a slice of integers",

@@ -1,5 +1,5 @@
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ScheduleEvent": {
       "description": "ScheduleEvent schedules an event with time types",

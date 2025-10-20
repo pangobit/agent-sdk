@@ -47,7 +47,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"path/filepath"
 	"strings"
 	"text/template"
 )
@@ -734,32 +733,6 @@ func (g *GoMapGenerator) Generate(desc APIDescription) (GeneratedContent, error)
 		ConstName:   g.varName,
 	}, nil
 }
-
-// DefaultWriter is the default implementation of Writer
-type DefaultWriter struct{}
-
-// NewWriter creates a new writer instance
-func NewWriter() Writer {
-	return &DefaultWriter{}
-}
-
-// WriteToFile writes generated content to a file
-func (w *DefaultWriter) WriteToFile(content GeneratedContent, filePath string) error {
-	// Ensure directory exists
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	// Write file
-	err := os.WriteFile(filePath, []byte(content.Content), 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", filePath, err)
-	}
-
-	return nil
-}
-
 // NewDescription creates an API description from enriched methods
 func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
 	desc := APIDescription{

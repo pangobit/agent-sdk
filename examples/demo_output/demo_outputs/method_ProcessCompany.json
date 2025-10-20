@@ -1,5 +1,5 @@
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ProcessCompany": {
       "description": "ProcessCompany processes a company with nested address",

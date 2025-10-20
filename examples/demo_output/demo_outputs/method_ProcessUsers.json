@@ -1,5 +1,5 @@
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ProcessUsers": {
       "description": "ProcessUsers processes a slice of users",

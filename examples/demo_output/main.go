@@ -22,7 +22,6 @@ func main() {
 	parser := apigen.NewParser()
 	transformer := apigen.NewTransformer(parser.GetRegistry())
 	jsonGenerator := apigen.NewJSONGenerator()
-	writer := apigen.NewWriter()
 
 	// Parse the demo package
 	fmt.Println("\n1. Parsing api package...")
@@ -107,13 +106,20 @@ func main() {
 			log.Fatalf("Failed to generate JSON for %s: %v", f.name, err)
 		}
 
-		// Save to demo file
+		// Save to demo file using new API
 		filename := filepath.Join(outputDir, fmt.Sprintf("%s.json", f.name))
 		content.FileName = filename
 
-		err = writer.WriteToFile(content, filename)
+		// Write using io.WriterTo
+		file, err := os.Create(filename)
 		if err != nil {
-			log.Fatalf("Failed to write golden file for %s: %v", f.name, err)
+			log.Fatalf("Failed to create file %s: %v", filename, err)
+		}
+		defer file.Close()
+
+		_, err = content.WriteTo(file)
+		if err != nil {
+			log.Fatalf("Failed to write demo file for %s: %v", f.name, err)
 		}
 
 		fmt.Printf("   Generated demo file: %s (%d methods)\n", filename, len(enriched))
@@ -143,7 +149,14 @@ func main() {
 		filename := filepath.Join(outputDir, fmt.Sprintf("method_%s.json", methodName))
 		content.FileName = filename
 
-		err = writer.WriteToFile(content, filename)
+		// Write using io.WriterTo
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Fatalf("Failed to create file %s: %v", filename, err)
+		}
+		defer file.Close()
+
+		_, err = content.WriteTo(file)
 		if err != nil {
 			log.Fatalf("Failed to write golden file for method %s: %v", methodName, err)
 		}

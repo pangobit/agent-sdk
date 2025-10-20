@@ -1,5 +1,5 @@
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ProcessData": {
       "description": "ProcessData processes a simple string map",

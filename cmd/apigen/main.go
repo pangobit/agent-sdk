@@ -14,7 +14,8 @@ func main() {
 	var (
 		packagePath = flag.String("package", "", "Package path to analyze (cannot use with -file)")
 		filePath    = flag.String("file", "", "Go file to analyze (cannot use with -package)")
-		outputFile  = flag.String("out", "", "Output Go file path")
+		outputFile  = flag.String("out", "", "Output Go file path (cannot use with -stdout)")
+		stdout      = flag.Bool("stdout", false, "Write to stdout instead of file")
 		constName   = flag.String("const", "", "Name of the generated constant")
 		apiName     = flag.String("api-name", "", "Name for the generated API")
 		methodList  = flag.String("methods", "", "Comma-separated list of method names to include")
@@ -33,8 +34,11 @@ func main() {
 	}
 
 	// Validate required parameters
-	if *outputFile == "" {
-		log.Fatal("output file (-out) is required")
+	if !*stdout && *outputFile == "" {
+		log.Fatal("either output file (-out) or stdout (-stdout) is required")
+	}
+	if *stdout && *outputFile != "" {
+		log.Fatal("cannot specify both -out and -stdout, choose one")
 	}
 	if *constName == "" {
 		log.Fatal("constant name (-const) is required")
@@ -46,69 +50,81 @@ func main() {
 		log.Fatal("cannot specify both -package and -file, choose one")
 	}
 
-	// Determine package name from file path if not specified
+	// Build configuration
+	config := apigen.NewConfig().
+		WithConstName(*constName)
+
+	if *apiName != "" {
+		config = config.WithAPIName(*apiName)
+	}
+
+	// Set input source
+	if *packagePath != "" {
+		config = config.WithPackage(*packagePath)
+		// Infer API name from package if not specified
+		if *apiName == "" {
+			config = config.WithAPIName(inferPackageName(*packagePath))
+		}
+	} else {
+		config = config.WithFile(*filePath)
+		// Infer package name from file
+		if inferredPkg := inferPackageFromFile(*filePath); inferredPkg != "" {
+			config = config.WithPackageName(inferredPkg)
+		}
+	}
+
+	// Set output target
+	if *stdout {
+		config = config.WithOutput(apigen.Stdout())
+	} else {
+		config = config.WithOutput(apigen.File(*outputFile))
+	}
+
+	// Determine package name for generators
 	packageName := "main" // default
 	if *packagePath != "" {
-		// For package mode, try to infer package name or use default
-		if *apiName == "" {
-			*apiName = inferPackageName(*packagePath)
+		// For package mode, infer from path
+		if inferred := inferPackageName(*packagePath); inferred != "" {
+			packageName = inferred
 		}
 	} else if *filePath != "" {
-		// For file mode, try to infer package name from file
-		if inferredPkg := inferPackageFromFile(*filePath); inferredPkg != "" {
-			packageName = inferredPkg
+		// For file mode, read from file
+		if inferred := inferPackageFromFile(*filePath); inferred != "" {
+			packageName = inferred
 		}
 	}
 
-	// New v2.0 API pipeline
-	parser := apigen.NewParser()
-	transformer := apigen.NewTransformer(apigen.NewTypeRegistry())
-
-	// Parse methods
-	var methods []apigen.RawMethod
-	var err error
-	if *packagePath != "" {
-		methods, err = parser.ParsePackage(*packagePath)
-	} else {
-		methods, err = parser.ParseSingleFile(*filePath)
-	}
-	if err != nil {
-		log.Fatalf("Failed to parse: %v", err)
-	}
-
-	// Apply filtering
-	filteredMethods := applyFiltering(methods, *methodList, *prefix, *suffix, *contains)
-
-	// Transform methods
-	enrichedMethods, err := transformer.Transform(filteredMethods)
-	if err != nil {
-		log.Fatalf("Failed to transform methods: %v", err)
-	}
-
-	// Create API description
-	desc := apigen.NewDescription(*apiName, enrichedMethods)
-
-	// Generate output
-	var content apigen.GeneratedContent
+	// Set generator type
 	if *mapOutput {
-		generator := apigen.NewGoMapGenerator(packageName, *constName)
-		content, err = generator.Generate(desc)
+		config = config.WithGenerator(apigen.NewGoMapGenerator(packageName, *constName))
 	} else {
-		generator := apigen.NewGoConstGenerator(packageName, *constName)
-		content, err = generator.Generate(desc)
-	}
-	if err != nil {
-		log.Fatalf("Failed to generate content: %v", err)
+		config = config.WithGenerator(apigen.NewGoConstGenerator(packageName, *constName))
 	}
 
-	// Write to file
-	writer := apigen.NewWriter()
-	err = writer.WriteToFile(content, *outputFile)
-	if err != nil {
-		log.Fatalf("Failed to write file: %v", err)
+	// Add filters
+	if *methodList != "" {
+		names := parseCommaSeparated(*methodList)
+		config = config.WithMethodFilter(apigen.FilterByListFunc(names))
+	}
+	if *prefix != "" {
+		config = config.WithMethodFilter(apigen.FilterByPrefixFunc(*prefix))
+	}
+	if *suffix != "" {
+		config = config.WithMethodFilter(apigen.FilterBySuffixFunc(*suffix))
+	}
+	if *contains != "" {
+		config = config.WithMethodFilter(apigen.FilterByContainsFunc(*contains))
 	}
 
-	fmt.Printf("Generated %s with constant %s\n", *outputFile, *constName)
+	// Generate
+	err := apigen.Generate(config)
+	if err != nil {
+		log.Fatalf("Failed to generate: %v", err)
+	}
+
+	if !*stdout {
+		fmt.Printf("Generated %s with constant %s\n", *outputFile, *constName)
+	}
 }
 
 func applyFiltering(methods []apigen.RawMethod, methodList, prefix, suffix, contains string) []apigen.RawMethod {
@@ -201,7 +217,8 @@ func showHelp() {
 	fmt.Println("FLAGS:")
 	fmt.Println("  -package string    Package path to analyze (cannot use with -file)")
 	fmt.Println("  -file string       Go file to analyze (cannot use with -package)")
-	fmt.Println("  -out string        Output Go file path (required)")
+	fmt.Println("  -out string        Output Go file path (cannot use with -stdout)")
+	fmt.Println("  -stdout            Write to stdout instead of file")
 	fmt.Println("  -const string      Name of the generated constant (required)")
 	fmt.Println("  -api-name string   Name for the generated API")
 	fmt.Println("  -methods string    Comma-separated list of method names to include")
@@ -214,6 +231,9 @@ func showHelp() {
 	fmt.Println("EXAMPLES:")
 	fmt.Println("  # Generate from package with prefix filter")
 	fmt.Println("  go run github.com/pangobit/agent-sdk/cmd/apigen -package=./pkg/handlers -prefix=Handle -out=api_gen.go -const=APIJSON")
+	fmt.Println()
+	fmt.Println("  # Generate from package to stdout")
+	fmt.Println("  go run github.com/pangobit/agent-sdk/cmd/apigen -package=./pkg/handlers -prefix=Handle -stdout -const=APIJSON")
 	fmt.Println()
 	fmt.Println("  # Generate from file with method list")
 	fmt.Println("  go run github.com/pangobit/agent-sdk/cmd/apigen -file=handlers.go -methods=Method1,Method2 -out=api_gen.go -const=APIJSON")

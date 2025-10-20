@@ -1,5 +1,5 @@
 {
-  "apiName": "GoldenFileDemo",
+  "apiName": "DemoAPI",
   "methods": {
     "ProcessTeam": {
       "description": "ProcessTeam processes a complex nested team structure",

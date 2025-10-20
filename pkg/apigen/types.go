@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"io"
 	"sort"
 )
 
@@ -54,16 +55,16 @@ type APIDescription struct {
 
 // MethodDescription contains information about a method
 type MethodDescription struct {
-	Description string                 `json:"description"`
+	Description string                   `json:"description"`
 	Parameters  map[string]ParameterInfo `json:"parameters"`
 }
 
 // ParameterInfo contains information about a parameter
 type ParameterInfo struct {
-	Type        string      `json:"type"`
-	Description string      `json:"description,omitempty"`
+	Type        string               `json:"type"`
+	Description string               `json:"description,omitempty"`
 	Fields      map[string]FieldInfo `json:"fields,omitempty"`
-	
+
 	// For slices and maps at parameter level
 	ElementType *FieldInfo `json:"elementType,omitempty"`
 	KeyType     *FieldInfo `json:"keyType,omitempty"`
@@ -72,11 +73,11 @@ type ParameterInfo struct {
 
 // FieldInfo contains information about a struct field
 type FieldInfo struct {
-	Type        string                 `json:"type"`
-	Description string                 `json:"description,omitempty"`
-	Annotations map[string]string      `json:"annotations,omitempty"`
-	Fields      map[string]FieldInfo   `json:"fields,omitempty"`
-	
+	Type        string               `json:"type"`
+	Description string               `json:"description,omitempty"`
+	Annotations map[string]string    `json:"annotations,omitempty"`
+	Fields      map[string]FieldInfo `json:"fields,omitempty"`
+
 	// For slices and maps
 	ElementType *FieldInfo `json:"elementType,omitempty"`
 	KeyType     *FieldInfo `json:"keyType,omitempty"`
@@ -144,7 +145,7 @@ type EnrichedMethod struct {
 type EnrichedParam struct {
 	Name         string
 	Type         ParsedType
-	Field        *ParsedField // for struct parameters
+	Field        *ParsedField  // for struct parameters
 	ResolvedType *ResolvedType // resolved type information
 }
 
@@ -171,10 +172,10 @@ type ResolvedField struct {
 
 // TypeResolver handles resolution of type references
 type TypeResolver struct {
-	registry    *TypeRegistry
-	resolved    map[string]*ResolvedType
-	resolving   map[string]bool // to detect cycles
-	imports     map[string]string // package name -> import path
+	registry  *TypeRegistry
+	resolved  map[string]*ResolvedType
+	resolving map[string]bool   // to detect cycles
+	imports   map[string]string // package name -> import path
 }
 
 // NewTypeResolver creates a new type resolver
@@ -288,7 +289,7 @@ func (r *TypeResolver) ResolveAllTypes() error {
 		// Try to resolve simpler types first
 		ti := r.registry.types[typeNames[i]]
 		tj := r.registry.types[typeNames[j]]
-		
+
 		// Basic types first
 		if ti.Kind != tj.Kind {
 			return ti.Kind < tj.Kind
@@ -329,34 +330,13 @@ func (r *TypeRegistry) GetType(name string) (*ParsedType, bool) {
 	return typ, exists
 }
 
-// resolveType recursively resolves type references
-func (r *TypeRegistry) resolveType(pt *ParsedType) {
-	// Resolve named types
-	if pt.Kind == TypeKindBasic && pt.Name != "" {
-		if resolvedType, exists := r.GetType(pt.Name); exists && resolvedType != pt {
-			// Copy the resolved type's properties
-			*pt = *resolvedType
-		}
-	}
-
-	// Recursively resolve nested types
-	if pt.KeyType != nil {
-		r.resolveType(pt.KeyType)
-	}
-	if pt.ValueType != nil {
-		r.resolveType(pt.ValueType)
-	}
-
-	// Resolve fields
-	for i := range pt.Fields {
-		r.resolveType(&pt.Fields[i].Type)
-	}
-}
-
 // ResolveAllTypes resolves all type references in the registry using the new resolver
 func (r *TypeRegistry) ResolveAllTypes() {
 	resolver := NewTypeResolver(r)
-	resolver.ResolveAllTypes() // Ignore error for backward compatibility
+	if resolver == nil {
+		return
+	}
+	_ = resolver.ResolveAllTypes() // Ignore error for backward compatibility
 }
 
 // NewTypeRegistry creates a new type registry
@@ -366,12 +346,17 @@ func NewTypeRegistry() *TypeRegistry {
 	}
 }
 
-// GeneratedContent represents generated output
+// GeneratedContent represents generated output that can write itself to any destination
 type GeneratedContent struct {
 	Content     string
 	FileName    string
 	ConstName   string
 	PackageName string
+}
+
+func (gc GeneratedContent) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write([]byte(gc.Content))
+	return int64(n), err
 }
 
 // ParseStrategy defines how to filter methods
@@ -385,11 +370,11 @@ const (
 
 // GeneratorConfig configures the API generation process (legacy)
 type GeneratorConfig struct {
-	Strategy      ParseStrategy // How to filter methods
-	Filter        string        // Filter string (prefix, suffix, or contains)
-	MethodList    []string      // Optional discrete list of methods to include
-	ExcludeHTTP   bool          // Whether to exclude HTTP-related parameters
-	APIName       string        // Name for the generated API
+	Strategy    ParseStrategy // How to filter methods
+	Filter      string        // Filter string (prefix, suffix, or contains)
+	MethodList  []string      // Optional discrete list of methods to include
+	ExcludeHTTP bool          // Whether to exclude HTTP-related parameters
+	APIName     string        // Name for the generated API
 }
 
 // Parser interface
@@ -405,11 +390,8 @@ type Transformer interface {
 }
 
 // Generator interface for different output formats
+// Generate creates content that implements io.WriterTo for flexible output destinations
 type Generator interface {
 	Generate(desc APIDescription) (GeneratedContent, error)
 }
 
-// Writer interface
-type Writer interface {
-	WriteToFile(content GeneratedContent, filePath string) error
-}
