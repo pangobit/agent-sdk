@@ -1,6 +1,59 @@
 # API Generation Demo
 
-This example demonstrates the new map output format for the `apigen` package, which generates a `map[string]string` instead of a single JSON string.
+This example demonstrates the advanced features of the `apigen` package, including:
+
+- **Map Output Format**: Generates a `map[string]string` instead of a single JSON string for better performance
+- **Nested Struct Introspection**: Automatically introspects nested struct fields
+- **Slice Type Introspection**: Introspects the element types of slices, including slices of structs
+
+## Overview
+
+The apigen package can now handle complex nested data structures and provides two output formats.
+
+### Nested Struct Support
+
+When your functions use custom struct types, apigen automatically introspects all nested fields:
+
+```go
+type Address struct {
+    Street  string `json:"street"`
+    City    string `json:"city"`
+    // ...
+}
+
+type User struct {
+    ID      int     `json:"id"`
+    Name    string  `json:"name"`
+    Address Address `json:"address"`  // Nested struct
+}
+
+func ProcessUser(user User) error {
+    return nil
+}
+```
+
+The generated API description will include the full structure of the `Address` type within the `User` type.
+
+### Slice Type Introspection
+
+For slices of structs, apigen introspects the element type:
+
+```go
+type Item struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+type Order struct {
+    Items []Item `json:"items"`  // Slice of structs
+}
+
+func ProcessOrder(order Order) error {
+    return nil
+}
+```
+
+The generated description will include the `Item` struct fields under the `Items` slice field.
 
 ## Overview
 

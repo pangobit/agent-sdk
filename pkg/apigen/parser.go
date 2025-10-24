@@ -3,7 +3,6 @@ package apigen
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"strings"
 )
@@ -61,16 +60,13 @@ func matchesFilter(methodName string, config GeneratorConfig) bool {
 }
 
 // generateMethodDescription creates a MethodDescription from an AST function declaration
-func generateMethodDescription(funcDecl *ast.FuncDecl, fset *token.FileSet) (MethodDescription, error) {
+func generateMethodDescription(funcDecl *ast.FuncDecl, fset *token.FileSet, typeDefs map[string]*ast.TypeSpec) (MethodDescription, error) {
 	desc := MethodDescription{
 		Parameters: make(map[string]ParameterInfo),
 	}
 
 	// Extract description from comments
 	desc.Description = extractDocComment(funcDecl)
-
-	// Collect type definitions from the file for struct field resolution
-	typeDefs := collectTypeDefinitions(funcDecl, fset)
 
 	// Extract parameters (excluding HTTP types if configured)
 	if funcDecl.Type.Params != nil {
@@ -110,21 +106,33 @@ func extractDocComment(funcDecl *ast.FuncDecl) string {
 	return ""
 }
 
-// collectTypeDefinitions collects all type definitions from the file containing the function
-func collectTypeDefinitions(funcDecl *ast.FuncDecl, fset *token.FileSet) map[string]*ast.TypeSpec {
+// collectAllTypeDefinitions collects all type definitions from all parsed packages
+func collectAllTypeDefinitions(pkgs map[string]*ast.Package, fset *token.FileSet) map[string]*ast.TypeSpec {
 	typeDefs := make(map[string]*ast.TypeSpec)
 
-	// Find the file that contains this function
-	pos := fset.Position(funcDecl.Pos())
-	filename := pos.Filename
-
-	// We need to parse the file again to get all declarations
-	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
-	if err != nil {
-		return typeDefs
+	for _, pkg := range pkgs {
+		for _, file := range pkg.Files {
+			// Collect all type declarations from this file
+			for _, decl := range file.Decls {
+				if genDecl, ok := decl.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
+					for _, spec := range genDecl.Specs {
+						if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+							typeDefs[typeSpec.Name.Name] = typeSpec
+						}
+					}
+				}
+			}
+		}
 	}
 
-	// Collect all type declarations
+	return typeDefs
+}
+
+// collectTypeDefinitionsFromFile collects all type definitions from a single parsed file
+func collectTypeDefinitionsFromFile(file *ast.File) map[string]*ast.TypeSpec {
+	typeDefs := make(map[string]*ast.TypeSpec)
+
+	// Collect all type declarations from this file
 	for _, decl := range file.Decls {
 		if genDecl, ok := decl.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
 			for _, spec := range genDecl.Specs {
@@ -197,6 +205,20 @@ func extractStructFields(structType *ast.StructType, fset *token.FileSet, typeDe
 					nestedFields, err := extractStructFields(nestedStructType, fset, typeDefs)
 					if err == nil {
 						fieldInfo.Fields = nestedFields
+					}
+				}
+			}
+		}
+
+		// If this field is a slice of a custom struct type, extract the element type fields
+		if arrayType, ok := field.Type.(*ast.ArrayType); ok {
+			if ident, ok := arrayType.Elt.(*ast.Ident); ok {
+				if typeSpec, exists := typeDefs[ident.Name]; exists {
+					if nestedStructType, ok := typeSpec.Type.(*ast.StructType); ok {
+						nestedFields, err := extractStructFields(nestedStructType, fset, typeDefs)
+						if err == nil {
+							fieldInfo.Fields = nestedFields
+						}
 					}
 				}
 			}

@@ -17,32 +17,32 @@ func TestGenerateFromFile(t *testing.T) {
 		expectCount int
 	}{
 		{
-			name: "prefix_filter",
-			config: WithPrefix("Handle").SetAPIName("TestAPI"),
+			name:        "prefix_filter",
+			config:      WithPrefix("Handle").SetAPIName("TestAPI"),
 			expectError: false,
 			expectCount: 2, // HandleEcho, HandlePing
 		},
 		{
-			name: "suffix_filter",
-			config: WithSuffix("Handler").SetAPIName("TestAPI"),
+			name:        "suffix_filter",
+			config:      WithSuffix("Handler").SetAPIName("TestAPI"),
 			expectError: false,
 			expectCount: 1, // SomeHandler
 		},
 		{
-			name: "contains_filter",
-			config: WithContains("Echo").SetAPIName("TestAPI"),
+			name:        "contains_filter",
+			config:      WithContains("Echo").SetAPIName("TestAPI"),
 			expectError: false,
 			expectCount: 1, // HandleEcho
 		},
 		{
-			name: "method_list_filter",
-			config: WithMethodList("HandleEcho", "SomeHandler").SetAPIName("TestAPI"),
+			name:        "method_list_filter",
+			config:      WithMethodList("HandleEcho", "SomeHandler").SetAPIName("TestAPI"),
 			expectError: false,
 			expectCount: 2,
 		},
 		{
-			name: "exclude_http_types",
-			config: WithPrefix("HTTP").SetAPIName("TestAPI"),
+			name:        "exclude_http_types",
+			config:      WithPrefix("HTTP").SetAPIName("TestAPI"),
 			expectError: false,
 			expectCount: 1, // HTTPMethod should exclude http.Request parameter
 		},
@@ -381,7 +381,7 @@ func HandleRequest(id int, name string) error {
 		t.Fatal("could not find end of map")
 	}
 
-	mapContent := contentStr[start:end+1]
+	mapContent := contentStr[start : end+1]
 
 	// Should contain both method keys
 	if !strings.Contains(mapContent, `"ProcessData":`) {
@@ -405,33 +405,26 @@ func HandleRequest(id int, name string) error {
 	}
 }
 
-func TestNestedStructParsing(t *testing.T) {
-	testFile := "test_nested.go"
+func TestSliceOfStructParsing(t *testing.T) {
+	testFile := "test_slice_struct.go"
 	testContent := `package test
 
-// Address represents a physical address
-type Address struct {
-	Street  string ` + "`" + `json:"street"` + "`" + `
-	City    string ` + "`" + `json:"city"` + "`" + `
-	State   string ` + "`" + `json:"state"` + "`" + `
-	ZipCode string ` + "`" + `json:"zipCode"` + "`" + `
+// Item represents an item in a collection
+type Item struct {
+	ID       int    ` + "`" + `json:"id"` + "`" + `
+	Name     string ` + "`" + `json:"name"` + "`" + `
+	Category string ` + "`" + `json:"category"` + "`" + `
 }
 
-// Company represents a company with nested address
-type Company struct {
-	Name    string  ` + "`" + `json:"name"` + "`" + `
-	Address Address ` + "`" + `json:"address"` + "`" + `
+// Collection represents a collection with nested slice of items
+type Collection struct {
+	Title string ` + "`" + `json:"title"` + "`" + `
+	Items []Item ` + "`" + `json:"items"` + "`" + `
+	Data  string ` + "`" + `json:"data"` + "`" + `
 }
 
-// Employee represents an employee with nested company
-type Employee struct {
-	ID      string  ` + "`" + `json:"id"` + "`" + `
-	Name    string  ` + "`" + `json:"name"` + "`" + `
-	Company Company ` + "`" + `json:"company"` + "`" + `
-}
-
-// ProcessEmployee processes employee data
-func ProcessEmployee(emp Employee) error {
+// ProcessCollection processes collection data
+func ProcessCollection(coll Collection) error {
 	return nil
 }
 `
@@ -441,112 +434,169 @@ func ProcessEmployee(emp Employee) error {
 	}
 	defer removeTestFile(testFile)
 
-	config := WithMethodList("ProcessEmployee").SetAPIName("TestAPI")
+	config := WithMethodList("ProcessCollection").SetAPIName("TestAPI")
 	result, err := GenerateFromFile(testFile, config)
 	if err != nil {
 		t.Fatalf("failed to generate description: %v", err)
 	}
 
-	method, exists := result.Methods["ProcessEmployee"]
+	method, exists := result.Methods["ProcessCollection"]
 	if !exists {
-		t.Fatal("ProcessEmployee method not found")
+		t.Fatal("ProcessCollection method not found")
 	}
 
-	empParam, exists := method.Parameters["emp"]
+	collParam, exists := method.Parameters["coll"]
 	if !exists {
-		t.Fatal("emp parameter not found")
+		t.Fatal("coll parameter not found")
 	}
 
-	if empParam.Type != "Employee" {
-		t.Errorf("expected emp type 'Employee', got '%s'", empParam.Type)
+	if collParam.Type != "Collection" {
+		t.Errorf("expected coll type 'Collection', got '%s'", collParam.Type)
 	}
 
-	// Check that Employee fields exist
-	employeeFields := empParam.Fields
-	if employeeFields == nil {
-		t.Fatal("Employee should have fields")
+	// Check that Collection fields exist
+	collectionFields := collParam.Fields
+	if collectionFields == nil {
+		t.Fatal("Collection should have fields")
 	}
 
-	// Check Employee.ID field
-	idField, exists := employeeFields["ID"]
+	// Check Collection.Items field (slice of structs)
+	itemsField, exists := collectionFields["Items"]
 	if !exists {
-		t.Error("Employee.ID field not found")
+		t.Error("Collection.Items field not found")
 	} else {
-		if idField.Type != "string" {
-			t.Errorf("Employee.ID: expected type 'string', got '%s'", idField.Type)
+		if itemsField.Type != "[]Item" {
+			t.Errorf("Collection.Items: expected type '[]Item', got '%s'", itemsField.Type)
 		}
-		if idField.Annotations["json"] != "id" {
-			t.Errorf("Employee.ID: expected json annotation 'id', got '%s'", idField.Annotations["json"])
+		if itemsField.Annotations["json"] != "items" {
+			t.Errorf("Collection.Items: expected json annotation 'items', got '%s'", itemsField.Annotations["json"])
+		}
+
+		// Check that the slice element type (Item) fields are introspected
+		itemFields := itemsField.Fields
+		if itemFields == nil {
+			t.Fatal("Items slice should have introspected Item fields")
+		}
+
+		expectedItemFields := map[string]string{
+			"ID":       "int",
+			"Name":     "string",
+			"Category": "string",
+		}
+
+		for fieldName, expectedType := range expectedItemFields {
+			field, exists := itemFields[fieldName]
+			if !exists {
+				t.Errorf("Item.%s field not found", fieldName)
+			} else {
+				if field.Type != expectedType {
+					t.Errorf("Item.%s: expected type '%s', got '%s'", fieldName, expectedType, field.Type)
+				}
+			}
+		}
+	}
+}
+
+func TestCrossPackageNestedStructParsing(t *testing.T) {
+	// Create a test file with types from different packages
+	testFile := "test_cross_package.go"
+	testContent := `package test
+
+import "time"
+
+type ExternalPackageType struct {
+	ID       int                    ` + "`json:\"id\"`" + `
+	Name     string                 ` + "`json:\"name\"`" + `
+	Metadata map[string]interface{} ` + "`json:\"metadata\"`" + `
+	Created  time.Time              ` + "`json:\"created\"`" + `
+}
+
+type MyStruct struct {
+	Test ExternalPackageType ` + "`json:\"test\"`" + `
+	Data string              ` + "`json:\"data\"`" + `
+}
+
+func ProcessMyStruct(ms MyStruct) error {
+	return nil
+}
+`
+	err := writeTestFile(testFile, testContent)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	defer removeTestFile(testFile)
+
+	config := WithMethodList("ProcessMyStruct").SetAPIName("TestAPI")
+	result, err := GenerateFromFile(testFile, config)
+	if err != nil {
+		t.Fatalf("failed to generate description: %v", err)
+	}
+
+	method, exists := result.Methods["ProcessMyStruct"]
+	if !exists {
+		t.Fatal("ProcessMyStruct method not found")
+	}
+
+	msParam, exists := method.Parameters["ms"]
+	if !exists {
+		t.Fatal("ms parameter not found")
+	}
+
+	if msParam.Type != "MyStruct" {
+		t.Errorf("expected ms type 'MyStruct', got '%s'", msParam.Type)
+	}
+
+	// Check that MyStruct fields exist
+	myStructFields := msParam.Fields
+	if myStructFields == nil {
+		t.Fatal("MyStruct should have fields")
+	}
+
+	// Check MyStruct.Data field
+	dataField, exists := myStructFields["Data"]
+	if !exists {
+		t.Error("MyStruct.Data field not found")
+	} else {
+		if dataField.Type != "string" {
+			t.Errorf("MyStruct.Data: expected type 'string', got '%s'", dataField.Type)
+		}
+		if dataField.Annotations["json"] != "data" {
+			t.Errorf("MyStruct.Data: expected json annotation 'data', got '%s'", dataField.Annotations["json"])
 		}
 	}
 
-	// Check Employee.Company field (nested struct)
-	companyField, exists := employeeFields["Company"]
+	// Check MyStruct.Test field (nested struct from same package)
+	testField, exists := myStructFields["Test"]
 	if !exists {
-		t.Error("Employee.Company field not found")
+		t.Error("MyStruct.Test field not found")
 	} else {
-		if companyField.Type != "Company" {
-			t.Errorf("Employee.Company: expected type 'Company', got '%s'", companyField.Type)
+		if testField.Type != "ExternalPackageType" {
+			t.Errorf("MyStruct.Test: expected type 'ExternalPackageType', got '%s'", testField.Type)
 		}
-		if companyField.Annotations["json"] != "company" {
-			t.Errorf("Employee.Company: expected json annotation 'company', got '%s'", companyField.Annotations["json"])
-		}
-
-		// Check nested Company fields
-		companyFields := companyField.Fields
-		if companyFields == nil {
-			t.Fatal("Company should have nested fields")
+		if testField.Annotations["json"] != "test" {
+			t.Errorf("MyStruct.Test: expected json annotation 'test', got '%s'", testField.Annotations["json"])
 		}
 
-		// Check Company.Name field
-		nameField, exists := companyFields["Name"]
-		if !exists {
-			t.Error("Company.Name field not found")
-		} else {
-			if nameField.Type != "string" {
-				t.Errorf("Company.Name: expected type 'string', got '%s'", nameField.Type)
-			}
-			if nameField.Annotations["json"] != "name" {
-				t.Errorf("Company.Name: expected json annotation 'name', got '%s'", nameField.Annotations["json"])
-			}
+		// Check nested ExternalPackageType fields
+		externalFields := testField.Fields
+		if externalFields == nil {
+			t.Fatal("ExternalPackageType should have nested fields")
 		}
 
-		// Check Company.Address field (deeply nested)
-		addressField, exists := companyFields["Address"]
-		if !exists {
-			t.Error("Company.Address field not found")
-		} else {
-			if addressField.Type != "Address" {
-				t.Errorf("Company.Address: expected type 'Address', got '%s'", addressField.Type)
-			}
-			if addressField.Annotations["json"] != "address" {
-				t.Errorf("Company.Address: expected json annotation 'address', got '%s'", addressField.Annotations["json"])
-			}
+		expectedFields := map[string]string{
+			"ID":       "int",
+			"Name":     "string",
+			"Metadata": "map[string]interface{}",
+			"Created":  "time.Time",
+		}
 
-			// Check deeply nested Address fields
-			addressFields := addressField.Fields
-			if addressFields == nil {
-				t.Fatal("Address should have nested fields")
-			}
-
-			expectedAddressFields := map[string]string{
-				"Street":  "street",
-				"City":    "city",
-				"State":   "state",
-				"ZipCode": "zipCode",
-			}
-
-			for fieldName, expectedJSON := range expectedAddressFields {
-				field, exists := addressFields[fieldName]
-				if !exists {
-					t.Errorf("Address.%s field not found", fieldName)
-				} else {
-					if field.Type != "string" {
-						t.Errorf("Address.%s: expected type 'string', got '%s'", fieldName, field.Type)
-					}
-					if field.Annotations["json"] != expectedJSON {
-						t.Errorf("Address.%s: expected json annotation '%s', got '%s'", fieldName, expectedJSON, field.Annotations["json"])
-					}
+		for fieldName, expectedType := range expectedFields {
+			field, exists := externalFields[fieldName]
+			if !exists {
+				t.Errorf("ExternalPackageType.%s field not found", fieldName)
+			} else {
+				if field.Type != expectedType {
+					t.Errorf("ExternalPackageType.%s: expected type '%s', got '%s'", fieldName, expectedType, field.Type)
 				}
 			}
 		}

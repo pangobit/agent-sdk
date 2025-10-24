@@ -92,7 +92,7 @@ func main() {
 	config := apigen.WithMethodList("GetUserProfile", "UpdateUserProfile", "SearchUsers").
 		SetAPIName("UserServiceAPI")
 
-	desc, err := apigen.GenerateFromFile("examples/apigen_web_server/main.go", config)
+	desc, err := apigen.GenerateFromFile("main.go", config)
 	if err != nil {
 		log.Fatalf("Failed to generate API description: %v", err)
 	}

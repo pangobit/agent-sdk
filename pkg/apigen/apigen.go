@@ -60,6 +60,9 @@ func GenerateFromPackage(packagePath string, config GeneratorConfig) (*APIDescri
 		}
 	}
 
+	// Collect all type definitions from all files in the package
+	allTypeDefs := collectAllTypeDefinitions(pkgs, fset)
+
 	// Filter methods based on strategy
 	filteredMethods := filterMethods(allMethods, config)
 
@@ -67,7 +70,7 @@ func GenerateFromPackage(packagePath string, config GeneratorConfig) (*APIDescri
 	methods := make(map[string]MethodDescription)
 
 	for name, method := range filteredMethods {
-		desc, err := generateMethodDescription(method, fset)
+		desc, err := generateMethodDescription(method, fset, allTypeDefs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate description for %s: %w", name, err)
 		}
@@ -102,11 +105,14 @@ func GenerateFromFile(filePath string, config GeneratorConfig) (*APIDescription,
 	methods := extractMethods(file)
 	filteredMethods := filterMethods(methods, config)
 
+	// Collect type definitions from the file
+	typeDefs := collectTypeDefinitionsFromFile(file)
+
 	// Generate descriptions
 	methodDescriptions := make(map[string]MethodDescription)
 
 	for name, method := range filteredMethods {
-		desc, err := generateMethodDescription(method, fset)
+		desc, err := generateMethodDescription(method, fset, typeDefs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate description for %s: %w", name, err)
 		}
