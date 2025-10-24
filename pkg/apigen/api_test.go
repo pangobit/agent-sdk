@@ -116,3 +116,206 @@ func TestMethodFilters(t *testing.T) {
 		t.Errorf("Expected 1 method containing Data, got %d", len(filtered))
 	}
 }
+
+func TestNilPointerSafety(t *testing.T) {
+	tests := []struct {
+		name          string
+		testFunc      func() (result interface{}, shouldPanic bool)
+		expectedPanic bool
+	}{
+		{
+			name: "packagePathInput.GetPackagePath with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var input *packagePathInput
+				result := input.GetPackagePath()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "packagePathInput.GetFilePath with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var input *packagePathInput
+				result := input.GetFilePath()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "filePathInput.GetPackagePath with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var input *filePathInput
+				result := input.GetPackagePath()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "filePathInput.GetFilePath with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var input *filePathInput
+				result := input.GetFilePath()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "stdoutTarget.GetWriter with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var target *stdoutTarget
+				result := target.GetWriter()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "stdoutTarget.Close with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var target *stdoutTarget
+				result := target.Close()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "fileTarget.GetWriter with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var target *fileTarget
+				result := target.GetWriter()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "fileTarget.Close with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var target *fileTarget
+				result := target.Close()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "writerTarget.GetWriter with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var target *writerTarget
+				result := target.GetWriter()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+		{
+			name: "writerTarget.Close with nil receiver",
+			testFunc: func() (interface{}, bool) {
+				var target *writerTarget
+				result := target.Close()
+				return result, false
+			},
+			expectedPanic: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use recover to catch any panics
+			defer func() {
+				if r := recover(); r != nil {
+					if !tt.expectedPanic {
+						t.Errorf("unexpected panic: %v", r)
+					}
+				} else if tt.expectedPanic {
+					t.Error("expected panic but none occurred")
+				}
+			}()
+
+			result, _ := tt.testFunc()
+			// Verify result is reasonable for non-panicking cases
+			if !tt.expectedPanic {
+				// For methods that return values, ensure they're not causing issues
+				_ = result
+			}
+		})
+	}
+}
+
+func TestNilFilterSafety(t *testing.T) {
+	methods := []RawMethod{
+		{Name: "TestMethod"},
+		{Name: "AnotherMethod"},
+	}
+
+	tests := []struct {
+		name       string
+		filterFunc func([]RawMethod) []RawMethod
+	}{
+		{
+			name: "prefixFilter.Filter with nil receiver",
+			filterFunc: func(methods []RawMethod) []RawMethod {
+				var filter *prefixFilter
+				return filter.Filter(methods)
+			},
+		},
+		{
+			name: "suffixFilter.Filter with nil receiver",
+			filterFunc: func(methods []RawMethod) []RawMethod {
+				var filter *suffixFilter
+				return filter.Filter(methods)
+			},
+		},
+		{
+			name: "containsFilter.Filter with nil receiver",
+			filterFunc: func(methods []RawMethod) []RawMethod {
+				var filter *containsFilter
+				return filter.Filter(methods)
+			},
+		},
+		{
+			name: "listFilter.Filter with nil receiver",
+			filterFunc: func(methods []RawMethod) []RawMethod {
+				var filter *listFilter
+				return filter.Filter(methods)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("unexpected panic: %v", r)
+				}
+			}()
+
+			result := tt.filterFunc(methods)
+			// When filter is nil, should return original methods unchanged
+			if len(result) != len(methods) {
+				t.Errorf("expected %d methods, got %d", len(methods), len(result))
+			}
+		})
+	}
+}
+
+func TestGenerateWithNilFilters(t *testing.T) {
+	// Create a minimal config with nil filters mixed in
+	config := NewConfig().
+		WithPackage("fmt"). // Use a package that exists
+		WithOutput(Stdout()).
+		WithMethodFilter(nil). // Add nil filter
+		WithMethodFilter(FilterByPrefixFunc("Print")).
+		WithMethodFilter(nil) // Add another nil filter
+
+	// This should not panic due to nil filters
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("unexpected panic in Generate with nil filters: %v", r)
+		}
+	}()
+
+	// We expect this to fail because we're using a real package, but it shouldn't panic
+	err := Generate(config)
+	if err == nil {
+		t.Log("Generate succeeded (unexpected but not a panic)")
+	} else {
+		t.Logf("Generate failed as expected: %v", err)
+	}
+}

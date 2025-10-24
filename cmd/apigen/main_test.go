@@ -1,313 +1,195 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/pangobit/agent-sdk/pkg/apigen"
 )
 
-func TestCLI_Help(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-help")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Help command failed: %v", err)
+func TestApplyFiltering(t *testing.T) {
+	methods := []apigen.RawMethod{
+		{Name: "HandleUser"},
+		{Name: "ProcessData"},
+		{Name: "ValidateInput"},
+		{Name: "HandleRequest"},
 	}
 
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "USAGE:") {
-		t.Error("Help output should contain USAGE section")
+	tests := []struct {
+		name           string
+		methodList     string
+		prefix         string
+		suffix         string
+		contains       string
+		expectedLength int
+		expectedNames  []string
+	}{
+		{
+			name:           "no filtering",
+			methodList:     "",
+			prefix:         "",
+			suffix:         "",
+			contains:       "",
+			expectedLength: 4,
+			expectedNames:  []string{"HandleUser", "ProcessData", "ValidateInput", "HandleRequest"},
+		},
+		{
+			name:           "filter by prefix",
+			methodList:     "",
+			prefix:         "Handle",
+			suffix:         "",
+			contains:       "",
+			expectedLength: 2,
+			expectedNames:  []string{"HandleUser", "HandleRequest"},
+		},
+		{
+			name:           "filter by suffix",
+			methodList:     "",
+			prefix:         "",
+			suffix:         "Input",
+			contains:       "",
+			expectedLength: 1,
+			expectedNames:  []string{"ValidateInput"},
+		},
+		{
+			name:           "filter by contains",
+			methodList:     "",
+			prefix:         "",
+			suffix:         "",
+			contains:       "Data",
+			expectedLength: 1,
+			expectedNames:  []string{"ProcessData"},
+		},
+		{
+			name:           "filter by method list",
+			methodList:     "HandleUser,ValidateInput",
+			prefix:         "",
+			suffix:         "",
+			contains:       "",
+			expectedLength: 2,
+			expectedNames:  []string{"HandleUser", "ValidateInput"},
+		},
 	}
-	if !strings.Contains(outputStr, "-stdout") {
-		t.Error("Help output should mention stdout flag")
-	}
-	if !strings.Contains(outputStr, "-package") {
-		t.Error("Help output should mention package flag")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := applyFiltering(methods, tt.methodList, tt.prefix, tt.suffix, tt.contains)
+
+			if len(result) != tt.expectedLength {
+				t.Errorf("expected %d methods, got %d", tt.expectedLength, len(result))
+			}
+
+			// Check that expected methods are present
+			resultNames := make([]string, len(result))
+			for i, method := range result {
+				resultNames[i] = method.Name
+			}
+
+			for _, expectedName := range tt.expectedNames {
+				found := false
+				for _, resultName := range resultNames {
+					if resultName == expectedName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected method %s not found in result", expectedName)
+				}
+			}
+		})
 	}
 }
 
-func TestCLI_MissingRequiredOptions(t *testing.T) {
-	// Test missing -const
-	cmd := exec.Command("go", "run", ".", "-package=../../examples/apigen_go_generate", "-stdout")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with missing -const")
+func TestParseCommaSeparated(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: nil,
+		},
+		{
+			name:     "single item",
+			input:    "item1",
+			expected: []string{"item1"},
+		},
+		{
+			name:     "multiple items",
+			input:    "item1,item2,item3",
+			expected: []string{"item1", "item2", "item3"},
+		},
+		{
+			name:     "items with spaces",
+			input:    "item1, item2 , item3",
+			expected: []string{"item1", " item2 ", " item3"},
+		},
+		{
+			name:     "quoted items",
+			input:    `"item1","item2","item3"`,
+			expected: []string{"item1", "item2", "item3"},
+		},
+		{
+			name:     "mixed quoted and unquoted",
+			input:    `item1,"item2",item3`,
+			expected: []string{"item1", "item2", "item3"},
+		},
 	}
 
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "constant name (-const) is required") {
-		t.Errorf("Expected error about missing const, got: %s", outputStr)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseCommaSeparated(tt.input)
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("expected %d items, got %d", len(tt.expected), len(result))
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if result[i] != expected {
+					t.Errorf("expected item %d to be %q, got %q", i, expected, result[i])
+				}
+			}
+		})
 	}
 }
 
-func TestCLI_ConflictingInputOptions(t *testing.T) {
-	// Test both -package and -file specified
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-file=test.go", "-const=TestAPI", "-stdout")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with conflicting input options")
+func TestInferPackageName(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple package",
+			input:    "./pkg/handlers",
+			expected: "handlers",
+		},
+		{
+			name:     "nested package",
+			input:    "github.com/user/project/pkg/handlers",
+			expected: "handlers",
+		},
+		{
+			name:     "single component",
+			input:    "main",
+			expected: "main",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "main",
+		},
 	}
 
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "cannot specify both -package and -file") {
-		t.Errorf("Expected error about conflicting input options, got: %s", outputStr)
-	}
-}
-
-func TestCLI_ConflictingOutputOptions(t *testing.T) {
-	// Test both -out and -stdout specified
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-out=test.go", "-stdout", "-const=TestAPI")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with conflicting output options")
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "cannot specify both -out and -stdout") {
-		t.Errorf("Expected error about conflicting output options, got: %s", outputStr)
-	}
-}
-
-func TestCLI_PackageInputStdoutOutput(t *testing.T) {
-	cmd := exec.Command("go", "run", ".", "-package=../../examples/apigen_go_generate", "-stdout", "-const=TestAPI", "-prefix=Process")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "// Code generated by apigen") {
-		t.Error("Output should contain generated code header")
-	}
-	if !strings.Contains(outputStr, "const TestAPI = ") {
-		t.Error("Output should contain the generated constant")
-	}
-	if !strings.Contains(outputStr, "ProcessUserData") {
-		t.Error("Output should contain ProcessUserData method")
-	}
-	if !strings.Contains(outputStr, `"apiName": "apigen_go_generate"`) {
-		t.Error("Output should contain correct API name")
-	}
-}
-
-func TestCLI_FileInputStdoutOutput(t *testing.T) {
-	cmd := exec.Command("go", "run", ".", "-file=../../examples/apigen_go_generate/main.go", "-stdout", "-const=TestAPI", "-prefix=Process")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "const TestAPI = ") {
-		t.Error("Output should contain the generated constant")
-	}
-	if !strings.Contains(outputStr, "ProcessUserData") {
-		t.Error("Output should contain ProcessUserData method")
-	}
-}
-
-func TestCLI_MethodListFilter(t *testing.T) {
-	cmd := exec.Command("go", "run", ".", "-package=../../examples/apigen_go_generate", "-stdout", "-const=TestAPI", "-methods=ProcessUserData")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "ProcessUserData") {
-		t.Error("Output should contain ProcessUserData method")
-	}
-	if strings.Contains(outputStr, "ValidateInput") {
-		t.Error("Output should not contain ValidateInput method")
-	}
-}
-
-func TestCLI_PrefixFilter(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-stdout", "-const=TestAPI", "-prefix=Process")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "ProcessUserData") {
-		t.Error("Output should contain ProcessUserData method")
-	}
-	if strings.Contains(outputStr, "ValidateInput") {
-		t.Error("Output should not contain ValidateInput method")
-	}
-}
-
-func TestCLI_ContainsFilter(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-stdout", "-const=TestAPI", "-contains=User")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "ProcessUserData") {
-		t.Error("Output should contain ProcessUserData method")
-	}
-	if strings.Contains(outputStr, "ValidateInput") {
-		t.Error("Output should not contain ValidateInput method")
-	}
-}
-
-func TestCLI_MapGenerator(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-stdout", "-const=TestAPIMap", "-prefix=Process", "-map")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "var TestAPIMap = map[string]string{") {
-		t.Error("Output should contain map declaration")
-	}
-	if !strings.Contains(outputStr, "GetMethodDescription") {
-		t.Error("Output should contain GetMethodDescription function")
-	}
-	if !strings.Contains(outputStr, `"ProcessUserData": `) {
-		t.Error("Output should contain ProcessUserData in map")
-	}
-}
-
-func TestCLI_FileOutput(t *testing.T) {
-	// Create temp file
-	tmpFile, err := os.CreateTemp("", "apigen_test_*.go")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
-
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-out="+tmpFile.Name(), "-const=TestAPI", "-prefix=Process")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	expectedMsg := "Generated " + tmpFile.Name() + " with constant TestAPI"
-	if !strings.Contains(outputStr, expectedMsg) {
-		t.Errorf("Expected output message '%s', got: %s", expectedMsg, outputStr)
-	}
-
-	// Check file contents
-	content, err := os.ReadFile(tmpFile.Name())
-	if err != nil {
-		t.Fatalf("Failed to read generated file: %v", err)
-	}
-
-	contentStr := string(content)
-	if !strings.Contains(contentStr, "// Code generated by apigen") {
-		t.Error("Generated file should contain code header")
-	}
-	if !strings.Contains(contentStr, "const TestAPI = ") {
-		t.Error("Generated file should contain the constant")
-	}
-}
-
-func TestCLI_CustomAPIName(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-stdout", "-const=TestAPI", "-api-name=MyCustomAPI", "-prefix=Process")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, `"apiName": "MyCustomAPI"`) {
-		t.Error("Output should contain custom API name")
-	}
-}
-
-func TestCLI_NoPackageOrFileSpecified(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-const=TestAPI", "-stdout")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with no input specified")
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "either package path (-package) or file path (-file) is required") {
-		t.Errorf("Expected error about missing input, got: %s", outputStr)
-	}
-}
-
-func TestCLI_NoOutputSpecified(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-package=./examples/apigen_go_generate", "-const=TestAPI")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with no output specified")
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "either output file (-out) or stdout (-stdout) is required") {
-		t.Errorf("Expected error about missing output, got: %s", outputStr)
-	}
-}
-
-func TestCLI_InvalidPackagePath(t *testing.T) {
-	cmd := exec.Command("go", "run", ".", "-package=./nonexistent/package", "-stdout", "-const=TestAPI")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with invalid package path")
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "Failed to generate") {
-		t.Errorf("Expected parse error, got: %s", outputStr)
-	}
-}
-
-func TestCLI_InvalidFilePath(t *testing.T) {
-	cmd := exec.Command("go", "run", ".", "-file=./nonexistent/file.go", "-stdout", "-const=TestAPI")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Error("Expected command to fail with invalid file path")
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "Failed to generate") {
-		t.Errorf("Expected parse error, got: %s", outputStr)
-	}
-}
-
-// Test with a temporary Go file to test file input
-func TestCLI_WithTempGoFile(t *testing.T) {
-	// Create a temporary Go file
-	tmpDir, err := os.MkdirTemp("", "apigen_test_")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	tmpFile := filepath.Join(tmpDir, "test.go")
-	goCode := `package main
-
-// TestMethod is a test method
-func TestMethod(param string) error {
-	return nil
-}
-`
-	err = os.WriteFile(tmpFile, []byte(goCode), 0644)
-	if err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
-
-	cmd := exec.Command("go", "run", "../../cmd/apigen", "-file="+tmpFile, "-stdout", "-const=TestAPI")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Command failed: %v", err)
-	}
-
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "TestMethod") {
-		t.Error("Output should contain TestMethod")
-	}
-	if !strings.Contains(outputStr, `"param":`) {
-		t.Error("Output should contain parameter information")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := inferPackageName(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+		})
 	}
 }

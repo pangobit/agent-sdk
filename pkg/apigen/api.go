@@ -27,15 +27,25 @@ type packagePathInput struct {
 	path string
 }
 
-func (p *packagePathInput) GetPackagePath() string { return p.path }
-func (p *packagePathInput) GetFilePath() string     { return "" }
+func (p *packagePathInput) GetPackagePath() string {
+	if p == nil {
+		return ""
+	}
+	return p.path
+}
+func (p *packagePathInput) GetFilePath() string { return "" }
 
 type filePathInput struct {
 	path string
 }
 
 func (f *filePathInput) GetPackagePath() string { return "" }
-func (f *filePathInput) GetFilePath() string     { return f.path }
+func (f *filePathInput) GetFilePath() string {
+	if f == nil {
+		return ""
+	}
+	return f.path
+}
 
 // OutputTarget represents where to write the generated content
 type OutputTarget interface {
@@ -61,7 +71,7 @@ func Writer(w io.Writer) OutputTarget {
 type stdoutTarget struct{}
 
 func (s *stdoutTarget) GetWriter() io.Writer { return os.Stdout }
-func (s *stdoutTarget) Close() error          { return nil }
+func (s *stdoutTarget) Close() error         { return nil }
 
 type fileTarget struct {
 	path   string
@@ -69,6 +79,9 @@ type fileTarget struct {
 }
 
 func (f *fileTarget) GetWriter() io.Writer {
+	if f == nil {
+		return nil
+	}
 	if f.writer == nil {
 		// Ensure directory exists
 		dir := filepath.Dir(f.path)
@@ -88,6 +101,9 @@ func (f *fileTarget) GetWriter() io.Writer {
 }
 
 func (f *fileTarget) Close() error {
+	if f == nil {
+		return nil
+	}
 	if f.writer != nil {
 		return f.writer.Close()
 	}
@@ -98,8 +114,13 @@ type writerTarget struct {
 	writer io.Writer
 }
 
-func (w *writerTarget) GetWriter() io.Writer { return w.writer }
-func (w *writerTarget) Close() error          { return nil }
+func (w *writerTarget) GetWriter() io.Writer {
+	if w == nil {
+		return nil
+	}
+	return w.writer
+}
+func (w *writerTarget) Close() error { return nil }
 
 // MethodFilter represents a filter for selecting methods
 type MethodFilter interface {
@@ -131,6 +152,9 @@ type prefixFilter struct {
 }
 
 func (f *prefixFilter) Filter(methods []RawMethod) []RawMethod {
+	if f == nil {
+		return methods
+	}
 	return FilterByPrefix(methods, f.prefix)
 }
 
@@ -139,6 +163,9 @@ type suffixFilter struct {
 }
 
 func (f *suffixFilter) Filter(methods []RawMethod) []RawMethod {
+	if f == nil {
+		return methods
+	}
 	return FilterBySuffix(methods, f.suffix)
 }
 
@@ -147,6 +174,9 @@ type containsFilter struct {
 }
 
 func (f *containsFilter) Filter(methods []RawMethod) []RawMethod {
+	if f == nil {
+		return methods
+	}
 	return FilterByContains(methods, f.substr)
 }
 
@@ -155,18 +185,21 @@ type listFilter struct {
 }
 
 func (f *listFilter) Filter(methods []RawMethod) []RawMethod {
+	if f == nil {
+		return methods
+	}
 	return FilterByList(methods, f.names)
 }
 
 // Config holds the configuration for API generation
 type Config struct {
-	Input       InputSource     // Where to read source code from
-	Output      OutputTarget    // Where to write generated content
-	Filters     []MethodFilter  // How to filter methods
-	Generator   Generator       // What format to generate
-	APIName     string          // Name for the API
-	ConstName   string          // Variable/constant name
-	PackageName string          // Go package name
+	Input       InputSource    // Where to read source code from
+	Output      OutputTarget   // Where to write generated content
+	Filters     []MethodFilter // How to filter methods
+	Generator   Generator      // What format to generate
+	APIName     string         // Name for the API
+	ConstName   string         // Variable/constant name
+	PackageName string         // Go package name
 }
 
 // NewConfig creates a new configuration with default values
@@ -257,7 +290,9 @@ func Generate(config *Config) error {
 	// Apply filters
 	filteredMethods := methods
 	for _, filter := range config.Filters {
-		filteredMethods = filter.Filter(filteredMethods)
+		if filter != nil {
+			filteredMethods = filter.Filter(filteredMethods)
+		}
 	}
 
 	// Transform methods

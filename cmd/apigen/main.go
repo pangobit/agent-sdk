@@ -180,8 +180,11 @@ func parseCommaSeparated(input string) []string {
 
 func inferPackageName(packagePath string) string {
 	// Simple heuristic: use the last component of the path
+	if packagePath == "" {
+		return "main"
+	}
 	parts := strings.Split(packagePath, "/")
-	if len(parts) > 0 {
+	if len(parts) > 0 && parts[len(parts)-1] != "" {
 		return parts[len(parts)-1]
 	}
 	return "main"
