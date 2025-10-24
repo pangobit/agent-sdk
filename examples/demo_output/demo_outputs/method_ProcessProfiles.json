@@ -1,0 +1,48 @@
+{
+  "apiName": "DemoAPI",
+  "methods": {
+    "ProcessProfiles": {
+      "description": "ProcessProfiles processes a map of user profiles",
+      "parameters": {
+        "profiles": {
+          "type": "map[string]Profile",
+          "keyType": {
+            "type": "string"
+          },
+          "valueType": {
+            "type": "Profile",
+            "fields": {
+              "Active": {
+                "type": "bool",
+                "annotations": {
+                  "json": "active"
+                }
+              },
+              "Age": {
+                "type": "int",
+                "annotations": {
+                  "json": "age"
+                }
+              },
+              "Bio": {
+                "type": "string",
+                "annotations": {
+                  "json": "bio"
+                }
+              },
+              "Tags": {
+                "type": "[]string",
+                "annotations": {
+                  "json": "tags"
+                },
+                "elementType": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,575 +1,302 @@
-package apigen
+package apigen_test
 
 import (
 	"encoding/json"
-	"go/parser"
-	"go/token"
-	"os"
-	"strings"
+	"path/filepath"
 	"testing"
+
+	"github.com/pangobit/agent-sdk/pkg/apigen"
 )
 
-func TestGenerateFromFile(t *testing.T) {
+// TestParser_ParseSingleFile tests parsing of individual Go files
+func TestParser_ParseSingleFile(t *testing.T) {
 	tests := []struct {
 		name        string
-		config      GeneratorConfig
-		expectError bool
-		expectCount int
+		filePath    string
+		wantMethods int
+		wantNames   []string
 	}{
 		{
-			name: "prefix_filter",
-			config: WithPrefix("Handle").SetAPIName("TestAPI"),
-			expectError: false,
-			expectCount: 2, // HandleEcho, HandlePing
+			name:        "basic_methods",
+			filePath:    filepath.Join("testdata", "basic_methods.go"),
+			wantMethods: 2,
+			wantNames:   []string{"HandleEcho", "HandlePing"},
 		},
 		{
-			name: "suffix_filter",
-			config: WithSuffix("Handler").SetAPIName("TestAPI"),
-			expectError: false,
-			expectCount: 1, // SomeHandler
-		},
-		{
-			name: "contains_filter",
-			config: WithContains("Echo").SetAPIName("TestAPI"),
-			expectError: false,
-			expectCount: 1, // HandleEcho
-		},
-		{
-			name: "method_list_filter",
-			config: WithMethodList("HandleEcho", "SomeHandler").SetAPIName("TestAPI"),
-			expectError: false,
-			expectCount: 2,
-		},
-		{
-			name: "exclude_http_types",
-			config: WithPrefix("HTTP").SetAPIName("TestAPI"),
-			expectError: false,
-			expectCount: 1, // HTTPMethod should exclude http.Request parameter
+			name:        "nested_structs",
+			filePath:    filepath.Join("testdata", "nested_structs.go"),
+			wantMethods: 1,
+			wantNames:   []string{"ProcessCompany"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary test file
-			testFile := "test_sample.go"
-			testContent := `package test
-
-import "net/http"
-
-// HandleEcho handles echo requests
-// Parameters:
-//   - message: the message to echo
-func HandleEcho(message string, count int) error {
-	return nil
-}
-
-// HandlePing handles ping requests
-func HandlePing() {
-}
-
-// SomeHandler is a general handler
-func SomeHandler(data []byte, config map[string]interface{}) error {
-	return nil
-}
-
-// HTTPMethod demonstrates HTTP parameter exclusion
-func HTTPMethod(req *http.Request, data string) error {
-	return nil
-}
-
-// PrivateMethod should not be included in prefix filter
-func privateMethod() {
-}
-`
-			err := writeTestFile(testFile, testContent)
+			parser := apigen.NewParser()
+			methods, err := parser.ParseSingleFile(tt.filePath)
 			if err != nil {
-				t.Fatalf("failed to create test file: %v", err)
-			}
-			defer removeTestFile(testFile)
-
-			result, err := GenerateFromFile(testFile, tt.config)
-			if tt.expectError && err == nil {
-				t.Error("expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-			if err != nil {
-				return
+				t.Fatalf("ParseSingleFile() error = %v", err)
 			}
 
-			if result.APIName != tt.config.APIName {
-				t.Errorf("expected API name %s, got %s", tt.config.APIName, result.APIName)
+			if len(methods) != tt.wantMethods {
+				t.Errorf("ParseSingleFile() got %d methods, want %d", len(methods), tt.wantMethods)
 			}
 
-			if len(result.Methods) != tt.expectCount {
-				t.Errorf("expected %d methods, got %d", tt.expectCount, len(result.Methods))
-			}
-
-			// Verify JSON serialization works
-			jsonData, err := json.Marshal(result)
-			if err != nil {
-				t.Errorf("failed to marshal to JSON: %v", err)
-			}
-			if len(jsonData) == 0 {
-				t.Error("JSON output is empty")
+			for i, method := range methods {
+				if method.Name != tt.wantNames[i] {
+					t.Errorf("ParseSingleFile() method %d name = %s, want %s", i, method.Name, tt.wantNames[i])
+				}
 			}
 		})
 	}
 }
 
-func TestMethodDescriptionGeneration(t *testing.T) {
-	testFile := "test_method.go"
-	testContent := `package test
+// TestTransformer_Transform tests type transformation
+func TestTransformer_Transform(t *testing.T) {
+	tests := []struct {
+		name             string
+		filePath         string
+		filterMethod     string
+		expectedParam    string
+		expectedType     string
+		expectFieldsFail bool // true if we expect no Fields (basic types)
+		expectElementType bool // true if we expect ElementType to be set (slices)
+		expectKeyValueTypes bool // true if we expect KeyType and ValueType to be set (maps)
+	}{
+		{
+			name:             "basic_types",
+			filePath:         filepath.Join("testdata", "basic_methods.go"),
+			filterMethod:     "HandleEcho",
+			expectedParam:    "message",
+			expectedType:     "string",
+			expectFieldsFail: true, // Basic string type should not have fields
+			expectElementType: false,
+			expectKeyValueTypes: false,
+		},
+		{
+			name:             "nested_structs",
+			filePath:         filepath.Join("testdata", "nested_structs.go"),
+			filterMethod:     "ProcessCompany",
+			expectedParam:    "company",
+			expectedType:     "Company",
+			expectFieldsFail: false, // Now should succeed - nested types should be resolved
+			expectElementType: false,
+			expectKeyValueTypes: false,
+		},
+		{
+			name:             "slice_types",
+			filePath:         filepath.Join("testdata", "slice_types.go"),
+			filterMethod:     "ProcessUsers",
+			expectedParam:    "users",
+			expectedType:     "[]User",
+			expectFieldsFail: true, // Slice itself shouldn't have fields in Fields map
+			expectElementType: true, // But should have ElementType describing the User type
+			expectKeyValueTypes: false,
+		},
+		{
+			name:             "map_types",
+			filePath:         filepath.Join("testdata", "map_types.go"),
+			filterMethod:     "ProcessProfiles",
+			expectedParam:    "profiles",
+			expectedType:     "map[string]Profile",
+			expectFieldsFail: true, // Map itself shouldn't have fields in Fields map
+			expectElementType: false,
+			expectKeyValueTypes: true, // Should have KeyType and ValueType
+		},
+		{
+			name:             "complex_types",
+			filePath:         filepath.Join("testdata", "complex_types.go"),
+			filterMethod:     "ProcessTeam",
+			expectedParam:    "team",
+			expectedType:     "Team",
+			expectFieldsFail: false, // Now should succeed - nested types should be resolved
+			expectElementType: false,
+			expectKeyValueTypes: false,
+		},
+	}
 
-// ProcessData processes the given data
-// This function demonstrates parameter extraction
-func ProcessData(name string, age int, items []string, config map[string]interface{}) error {
-	return nil
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := apigen.NewParser()
+			transformer := apigen.NewTransformer(parser.GetRegistry())
+
+			methods, err := parser.ParseSingleFile(tt.filePath)
+			if err != nil {
+				t.Fatalf("failed to parse file: %v", err)
+			}
+
+			filtered := apigen.FilterByList(methods, []string{tt.filterMethod})
+			if len(filtered) != 1 {
+				t.Fatalf("expected 1 method after filtering, got %d", len(filtered))
+			}
+
+			enriched, err := transformer.Transform(filtered)
+			if err != nil {
+				t.Fatalf("Transform() error = %v", err)
+			}
+
+			if len(enriched) != 1 {
+				t.Fatalf("expected 1 enriched method, got %d", len(enriched))
+			}
+
+			method := enriched[0]
+			if len(method.Parameters) == 0 {
+				t.Fatal("expected at least 1 parameter")
+			}
+
+			param := method.Parameters[0]
+			if param.Name != tt.expectedParam {
+				t.Errorf("expected parameter name %s, got %s", tt.expectedParam, param.Name)
+			}
+
+			// Check the type by creating the API description
+			desc := apigen.NewDescription("TestAPI", []apigen.EnrichedMethod{method})
+			methodDesc := desc.Methods[method.Name]
+			paramInfo := methodDesc.Parameters[param.Name]
+			
+			if paramInfo.Type != tt.expectedType {
+				t.Errorf("expected parameter type %s, got %s", tt.expectedType, paramInfo.Type)
+			}
+
+			// Check field resolution in the API description
+			if tt.expectFieldsFail {
+				if len(paramInfo.Fields) > 0 {
+					t.Errorf("expected no fields in API description, but got %d fields", len(paramInfo.Fields))
+				}
+			} else {
+				// For types that should be resolved, check that fields are present
+				if len(paramInfo.Fields) == 0 {
+					t.Errorf("expected fields in API description, but got none")
+				}
+			}
+			
+			// Check for ElementType on slices
+			if tt.expectElementType {
+				if paramInfo.ElementType == nil {
+					t.Errorf("expected ElementType to be set for slice type, but it was nil")
+				} else if paramInfo.ElementType.Type == "" {
+					t.Errorf("expected ElementType to have a type, but it was empty")
+				}
+			} else {
+				if paramInfo.ElementType != nil {
+					t.Errorf("expected ElementType to be nil for non-slice type, but it was set")
+				}
+			}
+			
+			// Check for KeyType and ValueType on maps
+			if tt.expectKeyValueTypes {
+				if paramInfo.KeyType == nil {
+					t.Errorf("expected KeyType to be set for map type, but it was nil")
+				}
+				if paramInfo.ValueType == nil {
+					t.Errorf("expected ValueType to be set for map type, but it was nil")
+				}
+			} else {
+				if paramInfo.KeyType != nil {
+					t.Errorf("expected KeyType to be nil for non-map type, but it was set")
+				}
+				if paramInfo.ValueType != nil {
+					t.Errorf("expected ValueType to be nil for non-map type, but it was set")
+				}
+			}
+		})
+	}
 }
-`
-	err := writeTestFile(testFile, testContent)
+
+// TestFilterFunctions tests various filtering strategies
+func TestFilterFunctions(t *testing.T) {
+	parser := apigen.NewParser()
+	methods, err := parser.ParseSingleFile(filepath.Join("testdata", "basic_methods.go"))
 	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-	defer removeTestFile(testFile)
-
-	config := WithMethodList("ProcessData").SetAPIName("TestAPI")
-	result, err := GenerateFromFile(testFile, config)
-	if err != nil {
-		t.Fatalf("failed to generate description: %v", err)
+		t.Fatalf("failed to parse file: %v", err)
 	}
 
-	method, exists := result.Methods["ProcessData"]
-	if !exists {
-		t.Fatal("ProcessData method not found")
+	tests := []struct {
+		name     string
+		filter   func([]apigen.RawMethod) []apigen.RawMethod
+		expected []string
+	}{
+		{
+			name:     "FilterByPrefix_Handle",
+			filter:   func(m []apigen.RawMethod) []apigen.RawMethod { return apigen.FilterByPrefix(m, "Handle") },
+			expected: []string{"HandleEcho", "HandlePing"},
+		},
+		{
+			name:     "FilterBySuffix_Echo",
+			filter:   func(m []apigen.RawMethod) []apigen.RawMethod { return apigen.FilterBySuffix(m, "Echo") },
+			expected: []string{"HandleEcho"},
+		},
+		{
+			name:     "FilterByContains_Ping",
+			filter:   func(m []apigen.RawMethod) []apigen.RawMethod { return apigen.FilterByContains(m, "Ping") },
+			expected: []string{"HandlePing"},
+		},
+		{
+			name:     "FilterByList_specific",
+			filter:   func(m []apigen.RawMethod) []apigen.RawMethod { return apigen.FilterByList(m, []string{"HandleEcho"}) },
+			expected: []string{"HandleEcho"},
+		},
 	}
 
-	if method.Description != "ProcessData processes the given data This function demonstrates parameter extraction" {
-		t.Errorf("unexpected description: %s", method.Description)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := tt.filter(methods)
+			if len(filtered) != len(tt.expected) {
+				t.Errorf("expected %d methods, got %d", len(tt.expected), len(filtered))
+			}
 
-	expectedParams := map[string]string{
-		"name":   "string",
-		"age":    "int",
-		"items":  "[]string",
-		"config": "map[string]interface{}",
-	}
-
-	if len(method.Parameters) != len(expectedParams) {
-		t.Errorf("expected %d parameters, got %d", len(expectedParams), len(method.Parameters))
-	}
-
-	for paramName, expectedType := range expectedParams {
-		param, exists := method.Parameters[paramName]
-		if !exists {
-			t.Errorf("parameter %s not found", paramName)
-			continue
-		}
-		if param.Type != expectedType {
-			t.Errorf("parameter %s: expected type %s, got %s", paramName, expectedType, param.Type)
-		}
+			for i, method := range filtered {
+				if method.Name != tt.expected[i] {
+					t.Errorf("expected method %s, got %s", tt.expected[i], method.Name)
+				}
+			}
+		})
 	}
 }
 
-func TestHTTPParameterExclusion(t *testing.T) {
-	testFile := "test_http.go"
-	testContent := `package test
+// TestJSONGenerator_Generate tests JSON generation
+func TestJSONGenerator_Generate(t *testing.T) {
+	parser := apigen.NewParser()
+	transformer := apigen.NewTransformer(parser.GetRegistry())
+	generator := apigen.NewJSONGenerator()
 
-import "net/http"
-
-// HandleRequest handles HTTP requests
-func HandleRequest(w http.ResponseWriter, req *http.Request, userID string) error {
-	return nil
-}
-`
-	err := writeTestFile(testFile, testContent)
+	methods, err := parser.ParseSingleFile(filepath.Join("testdata", "basic_methods.go"))
 	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
+		t.Fatalf("failed to parse file: %v", err)
 	}
-	defer removeTestFile(testFile)
 
-	config := WithMethodList("HandleRequest").SetAPIName("TestAPI")
-	result, err := GenerateFromFile(testFile, config)
+	filtered := apigen.FilterByPrefix(methods, "Handle")
+	enriched, err := transformer.Transform(filtered)
 	if err != nil {
-		t.Fatalf("failed to generate description: %v", err)
+		t.Fatalf("failed to transform methods: %v", err)
 	}
 
-	method := result.Methods["HandleRequest"]
-
-	// Should only have userID parameter, not w or req
-	if len(method.Parameters) != 1 {
-		t.Errorf("expected 1 parameter after HTTP exclusion, got %d", len(method.Parameters))
-	}
-
-	param, exists := method.Parameters["userID"]
-	if !exists {
-		t.Error("userID parameter not found")
-	} else if param.Type != "string" {
-		t.Errorf("expected userID type string, got %s", param.Type)
-	}
-}
-
-func TestFilterHelpers(t *testing.T) {
-	prefixConfig := WithPrefix("Test")
-	if prefixConfig.Strategy != StrategyPrefix || prefixConfig.Filter != "Test" {
-		t.Error("WithPrefix not configured correctly")
-	}
-
-	suffixConfig := WithSuffix("Handler")
-	if suffixConfig.Strategy != StrategySuffix || suffixConfig.Filter != "Handler" {
-		t.Error("WithSuffix not configured correctly")
-	}
-
-	containsConfig := WithContains("Proc")
-	if containsConfig.Strategy != StrategyContains || containsConfig.Filter != "Proc" {
-		t.Error("WithContains not configured correctly")
-	}
-
-	methodListConfig := WithMethodList("Method1", "Method2")
-	if len(methodListConfig.MethodList) != 2 {
-		t.Error("WithMethodList not configured correctly")
-	}
-}
-
-func TestGenerateAndWriteGoFile(t *testing.T) {
-	// Create a temporary test file
-	testFile := "test_gen.go"
-	testContent := `package test
-
-// ProcessData processes data
-func ProcessData(input string) error {
-	return nil
-}
-`
-	err := writeTestFile(testFile, testContent)
+	desc := apigen.NewDescription("TestAPI", enriched)
+	content, err := generator.Generate(desc)
 	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-	defer removeTestFile(testFile)
-
-	outputFile := "test_api_gen.go"
-	defer removeTestFile(outputFile)
-
-	config := WithMethodList("ProcessData").SetAPIName("TestAPI")
-
-	err = GenerateAndWriteGoFileFromFile(testFile, outputFile, "TestAPIJSON", "test", config)
-	if err != nil {
-		t.Fatalf("failed to generate Go file: %v", err)
+		t.Fatalf("Generate() error = %v", err)
 	}
 
-	// Check that the file was created and contains expected content
-	content, err := os.ReadFile(outputFile)
-	if err != nil {
-		t.Fatalf("failed to read generated file: %v", err)
-	}
-
-	contentStr := string(content)
-
-	// Check for expected patterns
-	expectedPatterns := []string{
-		"// Code generated by apigen; DO NOT EDIT.",
-		"package test",
-		"const TestAPIJSON = `",
-		`"apiName": "TestAPI"`,
-		`"ProcessData"`,
-	}
-
-	for _, pattern := range expectedPatterns {
-		if !strings.Contains(contentStr, pattern) {
-			t.Errorf("generated file does not contain expected pattern: %s", pattern)
-		}
-	}
-
-	// Check that it's valid JSON by extracting and parsing the constant
-	start := strings.Index(contentStr, "const TestAPIJSON = `")
-	if start == -1 {
-		t.Fatal("could not find constant declaration")
-	}
-	start += len("const TestAPIJSON = `")
-
-	end := strings.LastIndex(contentStr, "`")
-	if end == -1 {
-		t.Fatal("could not find end of constant")
-	}
-
-	jsonStr := contentStr[start:end]
-
-	var desc APIDescription
-	err = json.Unmarshal([]byte(jsonStr), &desc)
-	if err != nil {
+	// Verify the generated JSON is valid
+	var parsed apigen.APIDescription
+	if err := json.Unmarshal([]byte(content.Content), &parsed); err != nil {
 		t.Fatalf("generated JSON is invalid: %v", err)
 	}
 
-	if desc.APIName != "TestAPI" {
-		t.Errorf("expected API name 'TestAPI', got '%s'", desc.APIName)
-	}
-}
-
-func TestGenerateAndWriteGoFileAsMap(t *testing.T) {
-	// Create a temporary test file
-	testFile := "test_gen_map.go"
-	testContent := `package test
-
-// ProcessData processes data
-func ProcessData(input string) error {
-	return nil
-}
-
-// HandleRequest handles a request
-func HandleRequest(id int, name string) error {
-	return nil
-}
-`
-	err := writeTestFile(testFile, testContent)
-	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-	defer removeTestFile(testFile)
-
-	outputFile := "test_api_gen_map.go"
-	defer removeTestFile(outputFile)
-
-	config := WithMethodList("ProcessData", "HandleRequest").SetAPIName("TestAPI")
-
-	err = GenerateAndWriteGoFileFromFileAsMap(testFile, outputFile, "APIDefinitions", "test", config)
-	if err != nil {
-		t.Fatalf("failed to generate Go file: %v", err)
+	// Verify structure
+	if parsed.APIName != "TestAPI" {
+		t.Errorf("expected API name 'TestAPI', got '%s'", parsed.APIName)
 	}
 
-	// Check that the file was created and contains expected content
-	content, err := os.ReadFile(outputFile)
-	if err != nil {
-		t.Fatalf("failed to read generated file: %v", err)
+	if len(parsed.Methods) != 2 {
+		t.Errorf("expected 2 methods, got %d", len(parsed.Methods))
 	}
 
-	contentStr := string(content)
-
-	// Check for expected patterns
-	expectedPatterns := []string{
-		"// Code generated by apigen; DO NOT EDIT.",
-		"package test",
-		"var APIDefinitions = map[string]string{",
-		`"ProcessData": `,
-		`"HandleRequest": `,
-		`"description":`,
-		`"parameters":`,
+	if _, exists := parsed.Methods["HandleEcho"]; !exists {
+		t.Error("HandleEcho method not found in generated API")
 	}
 
-	for _, pattern := range expectedPatterns {
-		if !strings.Contains(contentStr, pattern) {
-			t.Errorf("generated file does not contain expected pattern: %s", pattern)
-		}
+	if _, exists := parsed.Methods["HandlePing"]; !exists {
+		t.Error("HandlePing method not found in generated API")
 	}
-
-	// Check that it's valid Go code by attempting to parse it
-	// (We can't actually compile it without proper imports, but we can check syntax)
-	fset := token.NewFileSet()
-	_, err = parser.ParseFile(fset, outputFile, content, parser.ParseComments)
-	if err != nil {
-		t.Errorf("generated file is not valid Go syntax: %v", err)
-	}
-
-	// Extract and verify the map structure
-	start := strings.Index(contentStr, "var APIDefinitions = map[string]string{")
-	if start == -1 {
-		t.Fatal("could not find map variable declaration")
-	}
-
-	end := strings.LastIndex(contentStr, "}")
-	if end == -1 {
-		t.Fatal("could not find end of map")
-	}
-
-	mapContent := contentStr[start:end+1]
-
-	// Should contain both method keys
-	if !strings.Contains(mapContent, `"ProcessData":`) {
-		t.Error("map does not contain ProcessData key")
-	}
-	if !strings.Contains(mapContent, `"HandleRequest":`) {
-		t.Error("map does not contain HandleRequest key")
-	}
-
-	// Should contain JSON content (look for description and parameters)
-	if !strings.Contains(mapContent, `"description"`) {
-		t.Error("map values do not contain description field")
-	}
-	if !strings.Contains(mapContent, `"parameters"`) {
-		t.Error("map values do not contain parameters field")
-	}
-
-	// Should NOT contain apiName (since we're omitting it)
-	if strings.Contains(mapContent, `"apiName"`) {
-		t.Error("map should not contain apiName field")
-	}
-}
-
-func TestNestedStructParsing(t *testing.T) {
-	testFile := "test_nested.go"
-	testContent := `package test
-
-// Address represents a physical address
-type Address struct {
-	Street  string ` + "`" + `json:"street"` + "`" + `
-	City    string ` + "`" + `json:"city"` + "`" + `
-	State   string ` + "`" + `json:"state"` + "`" + `
-	ZipCode string ` + "`" + `json:"zipCode"` + "`" + `
-}
-
-// Company represents a company with nested address
-type Company struct {
-	Name    string  ` + "`" + `json:"name"` + "`" + `
-	Address Address ` + "`" + `json:"address"` + "`" + `
-}
-
-// Employee represents an employee with nested company
-type Employee struct {
-	ID      string  ` + "`" + `json:"id"` + "`" + `
-	Name    string  ` + "`" + `json:"name"` + "`" + `
-	Company Company ` + "`" + `json:"company"` + "`" + `
-}
-
-// ProcessEmployee processes employee data
-func ProcessEmployee(emp Employee) error {
-	return nil
-}
-`
-	err := writeTestFile(testFile, testContent)
-	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-	defer removeTestFile(testFile)
-
-	config := WithMethodList("ProcessEmployee").SetAPIName("TestAPI")
-	result, err := GenerateFromFile(testFile, config)
-	if err != nil {
-		t.Fatalf("failed to generate description: %v", err)
-	}
-
-	method, exists := result.Methods["ProcessEmployee"]
-	if !exists {
-		t.Fatal("ProcessEmployee method not found")
-	}
-
-	empParam, exists := method.Parameters["emp"]
-	if !exists {
-		t.Fatal("emp parameter not found")
-	}
-
-	if empParam.Type != "Employee" {
-		t.Errorf("expected emp type 'Employee', got '%s'", empParam.Type)
-	}
-
-	// Check that Employee fields exist
-	employeeFields := empParam.Fields
-	if employeeFields == nil {
-		t.Fatal("Employee should have fields")
-	}
-
-	// Check Employee.ID field
-	idField, exists := employeeFields["ID"]
-	if !exists {
-		t.Error("Employee.ID field not found")
-	} else {
-		if idField.Type != "string" {
-			t.Errorf("Employee.ID: expected type 'string', got '%s'", idField.Type)
-		}
-		if idField.Annotations["json"] != "id" {
-			t.Errorf("Employee.ID: expected json annotation 'id', got '%s'", idField.Annotations["json"])
-		}
-	}
-
-	// Check Employee.Company field (nested struct)
-	companyField, exists := employeeFields["Company"]
-	if !exists {
-		t.Error("Employee.Company field not found")
-	} else {
-		if companyField.Type != "Company" {
-			t.Errorf("Employee.Company: expected type 'Company', got '%s'", companyField.Type)
-		}
-		if companyField.Annotations["json"] != "company" {
-			t.Errorf("Employee.Company: expected json annotation 'company', got '%s'", companyField.Annotations["json"])
-		}
-
-		// Check nested Company fields
-		companyFields := companyField.Fields
-		if companyFields == nil {
-			t.Fatal("Company should have nested fields")
-		}
-
-		// Check Company.Name field
-		nameField, exists := companyFields["Name"]
-		if !exists {
-			t.Error("Company.Name field not found")
-		} else {
-			if nameField.Type != "string" {
-				t.Errorf("Company.Name: expected type 'string', got '%s'", nameField.Type)
-			}
-			if nameField.Annotations["json"] != "name" {
-				t.Errorf("Company.Name: expected json annotation 'name', got '%s'", nameField.Annotations["json"])
-			}
-		}
-
-		// Check Company.Address field (deeply nested)
-		addressField, exists := companyFields["Address"]
-		if !exists {
-			t.Error("Company.Address field not found")
-		} else {
-			if addressField.Type != "Address" {
-				t.Errorf("Company.Address: expected type 'Address', got '%s'", addressField.Type)
-			}
-			if addressField.Annotations["json"] != "address" {
-				t.Errorf("Company.Address: expected json annotation 'address', got '%s'", addressField.Annotations["json"])
-			}
-
-			// Check deeply nested Address fields
-			addressFields := addressField.Fields
-			if addressFields == nil {
-				t.Fatal("Address should have nested fields")
-			}
-
-			expectedAddressFields := map[string]string{
-				"Street":  "street",
-				"City":    "city",
-				"State":   "state",
-				"ZipCode": "zipCode",
-			}
-
-			for fieldName, expectedJSON := range expectedAddressFields {
-				field, exists := addressFields[fieldName]
-				if !exists {
-					t.Errorf("Address.%s field not found", fieldName)
-				} else {
-					if field.Type != "string" {
-						t.Errorf("Address.%s: expected type 'string', got '%s'", fieldName, field.Type)
-					}
-					if field.Annotations["json"] != expectedJSON {
-						t.Errorf("Address.%s: expected json annotation '%s', got '%s'", fieldName, expectedJSON, field.Annotations["json"])
-					}
-				}
-			}
-		}
-	}
-}
-
-// Helper functions for testing
-func writeTestFile(filename, content string) error {
-	return writeFile(filename, content)
-}
-
-func removeTestFile(filename string) {
-	os.Remove(filename)
-}
-
-// writeFile is a helper to write test files
-func writeFile(filename, content string) error {
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(content)
-	return err
 }

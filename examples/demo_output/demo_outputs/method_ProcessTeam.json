@@ -1,0 +1,206 @@
+{
+  "apiName": "DemoAPI",
+  "methods": {
+    "ProcessTeam": {
+      "description": "ProcessTeam processes a complex nested team structure",
+      "parameters": {
+        "team": {
+          "type": "Team",
+          "fields": {
+            "ID": {
+              "type": "int",
+              "annotations": {
+                "json": "id"
+              }
+            },
+            "Lead": {
+              "type": "User",
+              "annotations": {
+                "json": "lead"
+              },
+              "fields": {
+                "Email": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "email"
+                  }
+                },
+                "ID": {
+                  "type": "int",
+                  "annotations": {
+                    "json": "id"
+                  }
+                },
+                "IsActive": {
+                  "type": "bool",
+                  "annotations": {
+                    "json": "isActive"
+                  }
+                },
+                "Name": {
+                  "type": "string",
+                  "annotations": {
+                    "json": "name"
+                  }
+                },
+                "Tags": {
+                  "type": "[]string",
+                  "annotations": {
+                    "json": "tags,omitempty"
+                  },
+                  "elementType": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "Name": {
+              "type": "string",
+              "annotations": {
+                "json": "name"
+              }
+            },
+            "Projects": {
+              "type": "[]Project",
+              "annotations": {
+                "json": "projects"
+              },
+              "elementType": {
+                "type": "Project",
+                "fields": {
+                  "Description": {
+                    "type": "string",
+                    "annotations": {
+                      "json": "description"
+                    }
+                  },
+                  "ID": {
+                    "type": "int",
+                    "annotations": {
+                      "json": "id"
+                    }
+                  },
+                  "Members": {
+                    "type": "[]User",
+                    "annotations": {
+                      "json": "members"
+                    },
+                    "elementType": {
+                      "type": "User",
+                      "fields": {
+                        "Email": {
+                          "type": "string",
+                          "annotations": {
+                            "json": "email"
+                          }
+                        },
+                        "ID": {
+                          "type": "int",
+                          "annotations": {
+                            "json": "id"
+                          }
+                        },
+                        "IsActive": {
+                          "type": "bool",
+                          "annotations": {
+                            "json": "isActive"
+                          }
+                        },
+                        "Name": {
+                          "type": "string",
+                          "annotations": {
+                            "json": "name"
+                          }
+                        },
+                        "Tags": {
+                          "type": "[]string",
+                          "annotations": {
+                            "json": "tags,omitempty"
+                          },
+                          "elementType": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "Metadata": {
+                    "type": "map[string]string",
+                    "annotations": {
+                      "json": "metadata"
+                    },
+                    "keyType": {
+                      "type": "string"
+                    },
+                    "valueType": {
+                      "type": "string"
+                    }
+                  },
+                  "Name": {
+                    "type": "string",
+                    "annotations": {
+                      "json": "name"
+                    }
+                  },
+                  "Owner": {
+                    "type": "User",
+                    "annotations": {
+                      "json": "owner"
+                    },
+                    "fields": {
+                      "Email": {
+                        "type": "string",
+                        "annotations": {
+                          "json": "email"
+                        }
+                      },
+                      "ID": {
+                        "type": "int",
+                        "annotations": {
+                          "json": "id"
+                        }
+                      },
+                      "IsActive": {
+                        "type": "bool",
+                        "annotations": {
+                          "json": "isActive"
+                        }
+                      },
+                      "Name": {
+                        "type": "string",
+                        "annotations": {
+                          "json": "name"
+                        }
+                      },
+                      "Tags": {
+                        "type": "[]string",
+                        "annotations": {
+                          "json": "tags,omitempty"
+                        },
+                        "elementType": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Settings": {
+              "type": "map[string]string",
+              "annotations": {
+                "json": "settings"
+              },
+              "keyType": {
+                "type": "string"
+              },
+              "valueType": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

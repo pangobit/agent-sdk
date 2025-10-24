@@ -1,0 +1,51 @@
+{
+  "apiName": "DemoAPI",
+  "methods": {
+    "ProcessUsers": {
+      "description": "ProcessUsers processes a slice of users",
+      "parameters": {
+        "users": {
+          "type": "[]User",
+          "elementType": {
+            "type": "User",
+            "fields": {
+              "Email": {
+                "type": "string",
+                "annotations": {
+                  "json": "email"
+                }
+              },
+              "ID": {
+                "type": "int",
+                "annotations": {
+                  "json": "id"
+                }
+              },
+              "IsActive": {
+                "type": "bool",
+                "annotations": {
+                  "json": "isActive"
+                }
+              },
+              "Name": {
+                "type": "string",
+                "annotations": {
+                  "json": "name"
+                }
+              },
+              "Tags": {
+                "type": "[]string",
+                "annotations": {
+                  "json": "tags,omitempty"
+                },
+                "elementType": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "apiName": "DemoAPI",
+  "methods": {
+    "HandleBasicTypes": {
+      "description": "HandleBasicTypes processes basic Go types @param message A simple string message @param count An integer count @param enabled A boolean flag @param rate A floating point rate",
+      "parameters": {
+        "count": {
+          "type": "int"
+        },
+        "enabled": {
+          "type": "bool"
+        },
+        "message": {
+          "type": "string"
+        },
+        "rate": {
+          "type": "float64"
+        }
+      }
+    }
+  }
+}

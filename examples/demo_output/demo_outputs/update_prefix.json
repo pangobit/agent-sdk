@@ -1,0 +1,13 @@
+{
+  "apiName": "DemoAPI",
+  "methods": {
+    "UpdateConfig": {
+      "description": "UpdateConfig updates configuration with pointer types",
+      "parameters": {
+        "config": {
+          "type": "*Config"
+        }
+      }
+    }
+  }
+}
