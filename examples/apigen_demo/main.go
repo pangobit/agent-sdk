@@ -31,7 +31,10 @@ func main() {
 	}
 
 	// Create API description
-	desc := apigen.NewDescription("ExampleAPI", enriched)
+	desc, err := apigen.NewDescription("ExampleAPI", enriched)
+	if err != nil {
+		log.Fatalf("Failed to create API description: %v", err)
+	}
 
 	// Generate JSON output
 	content, err := generator.Generate(desc)

@@ -394,4 +394,3 @@ type Transformer interface {
 type Generator interface {
 	Generate(desc APIDescription) (GeneratedContent, error)
 }
-

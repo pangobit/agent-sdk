@@ -15,7 +15,7 @@ func debug() {
 	registry := parser.GetRegistry()
 	fmt.Printf("Found %d methods\n", len(methods))
 	fmt.Printf("Registry has types:")
-	
+
 	// Try to get some known types
 	if _, exists := registry.GetType("Company"); exists {
 		fmt.Printf(" Company")

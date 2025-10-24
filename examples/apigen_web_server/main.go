@@ -33,10 +33,10 @@ type UpdateProfileRequest struct {
 func GetUserProfile(w http.ResponseWriter, r *http.Request, req UserProfileRequest) error {
 	// Simulate fetching user profile
 	response := map[string]interface{}{
-		"userId":   req.UserID,
-		"name":     "John Doe",
-		"email":    "john@example.com",
-		"details":  req.IncludeDetails,
+		"userId":  req.UserID,
+		"name":    "John Doe",
+		"email":   "john@example.com",
+		"details": req.IncludeDetails,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -103,7 +103,10 @@ func main() {
 		log.Fatalf("Failed to transform methods: %v", err)
 	}
 
-	desc := apigen.NewDescription("UserServiceAPI", enriched)
+	desc, err := apigen.NewDescription("UserServiceAPI", enriched)
+	if err != nil {
+		log.Fatalf("Failed to create API description: %v", err)
+	}
 
 	// Pretty print the JSON output
 	jsonData, err := json.MarshalIndent(desc, "", "  ")

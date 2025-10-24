@@ -2,9 +2,9 @@ package test
 
 // Profile represents a user profile
 type Profile struct {
-	Bio     string `json:"bio"`
-	Age     int    `json:"age"`
-	Active  bool   `json:"active"`
+	Bio    string `json:"bio"`
+	Age    int    `json:"age"`
+	Active bool   `json:"active"`
 }
 
 // ProcessProfiles processes a map of user profiles

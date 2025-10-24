@@ -54,63 +54,63 @@ func TestParser_ParseSingleFile(t *testing.T) {
 // TestTransformer_Transform tests type transformation
 func TestTransformer_Transform(t *testing.T) {
 	tests := []struct {
-		name             string
-		filePath         string
-		filterMethod     string
-		expectedParam    string
-		expectedType     string
-		expectFieldsFail bool // true if we expect no Fields (basic types)
-		expectElementType bool // true if we expect ElementType to be set (slices)
+		name                string
+		filePath            string
+		filterMethod        string
+		expectedParam       string
+		expectedType        string
+		expectFieldsFail    bool // true if we expect no Fields (basic types)
+		expectElementType   bool // true if we expect ElementType to be set (slices)
 		expectKeyValueTypes bool // true if we expect KeyType and ValueType to be set (maps)
 	}{
 		{
-			name:             "basic_types",
-			filePath:         filepath.Join("testdata", "basic_methods.go"),
-			filterMethod:     "HandleEcho",
-			expectedParam:    "message",
-			expectedType:     "string",
-			expectFieldsFail: true, // Basic string type should not have fields
-			expectElementType: false,
+			name:                "basic_types",
+			filePath:            filepath.Join("testdata", "basic_methods.go"),
+			filterMethod:        "HandleEcho",
+			expectedParam:       "message",
+			expectedType:        "string",
+			expectFieldsFail:    true, // Basic string type should not have fields
+			expectElementType:   false,
 			expectKeyValueTypes: false,
 		},
 		{
-			name:             "nested_structs",
-			filePath:         filepath.Join("testdata", "nested_structs.go"),
-			filterMethod:     "ProcessCompany",
-			expectedParam:    "company",
-			expectedType:     "Company",
-			expectFieldsFail: false, // Now should succeed - nested types should be resolved
-			expectElementType: false,
+			name:                "nested_structs",
+			filePath:            filepath.Join("testdata", "nested_structs.go"),
+			filterMethod:        "ProcessCompany",
+			expectedParam:       "company",
+			expectedType:        "Company",
+			expectFieldsFail:    false, // Now should succeed - nested types should be resolved
+			expectElementType:   false,
 			expectKeyValueTypes: false,
 		},
 		{
-			name:             "slice_types",
-			filePath:         filepath.Join("testdata", "slice_types.go"),
-			filterMethod:     "ProcessUsers",
-			expectedParam:    "users",
-			expectedType:     "[]User",
-			expectFieldsFail: true, // Slice itself shouldn't have fields in Fields map
-			expectElementType: true, // But should have ElementType describing the User type
+			name:                "slice_types",
+			filePath:            filepath.Join("testdata", "slice_types.go"),
+			filterMethod:        "ProcessUsers",
+			expectedParam:       "users",
+			expectedType:        "[]User",
+			expectFieldsFail:    true, // Slice itself shouldn't have fields in Fields map
+			expectElementType:   true, // But should have ElementType describing the User type
 			expectKeyValueTypes: false,
 		},
 		{
-			name:             "map_types",
-			filePath:         filepath.Join("testdata", "map_types.go"),
-			filterMethod:     "ProcessProfiles",
-			expectedParam:    "profiles",
-			expectedType:     "map[string]Profile",
-			expectFieldsFail: true, // Map itself shouldn't have fields in Fields map
-			expectElementType: false,
+			name:                "map_types",
+			filePath:            filepath.Join("testdata", "map_types.go"),
+			filterMethod:        "ProcessProfiles",
+			expectedParam:       "profiles",
+			expectedType:        "map[string]Profile",
+			expectFieldsFail:    true, // Map itself shouldn't have fields in Fields map
+			expectElementType:   false,
 			expectKeyValueTypes: true, // Should have KeyType and ValueType
 		},
 		{
-			name:             "complex_types",
-			filePath:         filepath.Join("testdata", "complex_types.go"),
-			filterMethod:     "ProcessTeam",
-			expectedParam:    "team",
-			expectedType:     "Team",
-			expectFieldsFail: false, // Now should succeed - nested types should be resolved
-			expectElementType: false,
+			name:                "complex_types",
+			filePath:            filepath.Join("testdata", "complex_types.go"),
+			filterMethod:        "ProcessTeam",
+			expectedParam:       "team",
+			expectedType:        "Team",
+			expectFieldsFail:    false, // Now should succeed - nested types should be resolved
+			expectElementType:   false,
 			expectKeyValueTypes: false,
 		},
 	}
@@ -150,10 +150,13 @@ func TestTransformer_Transform(t *testing.T) {
 			}
 
 			// Check the type by creating the API description
-			desc := apigen.NewDescription("TestAPI", []apigen.EnrichedMethod{method})
+			desc, err := apigen.NewDescription("TestAPI", []apigen.EnrichedMethod{method})
+			if err != nil {
+				t.Fatalf("failed to create API description: %v", err)
+			}
 			methodDesc := desc.Methods[method.Name]
 			paramInfo := methodDesc.Parameters[param.Name]
-			
+
 			if paramInfo.Type != tt.expectedType {
 				t.Errorf("expected parameter type %s, got %s", tt.expectedType, paramInfo.Type)
 			}
@@ -169,7 +172,7 @@ func TestTransformer_Transform(t *testing.T) {
 					t.Errorf("expected fields in API description, but got none")
 				}
 			}
-			
+
 			// Check for ElementType on slices
 			if tt.expectElementType {
 				if paramInfo.ElementType == nil {
@@ -182,7 +185,7 @@ func TestTransformer_Transform(t *testing.T) {
 					t.Errorf("expected ElementType to be nil for non-slice type, but it was set")
 				}
 			}
-			
+
 			// Check for KeyType and ValueType on maps
 			if tt.expectKeyValueTypes {
 				if paramInfo.KeyType == nil {
@@ -271,7 +274,10 @@ func TestJSONGenerator_Generate(t *testing.T) {
 		t.Fatalf("failed to transform methods: %v", err)
 	}
 
-	desc := apigen.NewDescription("TestAPI", enriched)
+	desc, err := apigen.NewDescription("TestAPI", enriched)
+	if err != nil {
+		t.Fatalf("failed to create API description: %v", err)
+	}
 	content, err := generator.Generate(desc)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)

@@ -303,7 +303,10 @@ func Generate(config *Config) error {
 	}
 
 	// Create API description
-	desc := NewDescription(config.APIName, enrichedMethods)
+	desc, err := NewDescription(config.APIName, enrichedMethods)
+	if err != nil {
+		return fmt.Errorf("failed to create API description: %w", err)
+	}
 
 	// Generate content
 	content, err := config.Generator.Generate(desc)

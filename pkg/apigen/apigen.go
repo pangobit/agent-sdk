@@ -221,8 +221,8 @@ func (p *DefaultParser) extractDocComments(funcDecl *ast.FuncDecl) []string {
 
 // DefaultTransformer is the default implementation of Transformer
 type DefaultTransformer struct {
-	registry  *TypeRegistry
-	resolver  *TypeResolver
+	registry *TypeRegistry
+	resolver *TypeResolver
 }
 
 // NewTransformer creates a new transformer with the given type registry
@@ -370,9 +370,9 @@ func (t *DefaultTransformer) parseType(expr ast.Expr) (*ParsedType, error) {
 		}
 		// Create a new pointer type that wraps the element type
 		return &ParsedType{
-			Kind:    TypeKindPointer,
+			Kind:      TypeKindPointer,
 			IsPointer: true,
-			KeyType: elemType, // KeyType holds the pointed-to type for pointers
+			KeyType:   elemType, // KeyType holds the pointed-to type for pointers
 		}, nil
 
 	case *ast.ArrayType:
@@ -456,9 +456,9 @@ func (p *DefaultParser) parseType(expr ast.Expr) (*ParsedType, error) {
 		}
 		// Create a new pointer type that wraps the element type
 		return &ParsedType{
-			Kind:    TypeKindPointer,
+			Kind:      TypeKindPointer,
 			IsPointer: true,
-			KeyType: elemType, // KeyType holds the pointed-to type for pointers
+			KeyType:   elemType, // KeyType holds the pointed-to type for pointers
 		}, nil
 
 	case *ast.ArrayType:
@@ -733,8 +733,9 @@ func (g *GoMapGenerator) Generate(desc APIDescription) (GeneratedContent, error)
 		ConstName:   g.varName,
 	}, nil
 }
+
 // NewDescription creates an API description from enriched methods
-func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
+func NewDescription(apiName string, methods []EnrichedMethod) (APIDescription, error) {
 	desc := APIDescription{
 		APIName: apiName,
 		Methods: make(map[string]MethodDescription),
@@ -747,41 +748,78 @@ func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
 		}
 
 		for _, param := range method.Parameters {
+			typeStr, err := typeToString(param.Type)
+			if err != nil {
+				return desc, fmt.Errorf("failed to stringify parameter %s type: %w", param.Name, err)
+			}
+
 			paramInfo := ParameterInfo{
-				Type: typeToString(param.Type),
+				Type: typeStr,
 			}
 
 			// Use resolved type information if available
 			if param.ResolvedType != nil {
-				paramInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType)
-				
+				fields, err := buildFieldInfoFromResolved(param.ResolvedType)
+				if err != nil {
+					return desc, fmt.Errorf("failed to build resolved field info for parameter %s: %w", param.Name, err)
+				}
+				paramInfo.Fields = fields
+
 				// Handle the parameter type itself being a slice or map
 				if param.ResolvedType.IsSlice && param.ResolvedType.KeyType != nil {
-					elementTypeInfo := FieldInfo{
-						Type: resolvedTypeToString(param.ResolvedType.KeyType),
+					elementTypeStr, err := resolvedTypeToString(param.ResolvedType.KeyType)
+					if err != nil {
+						return desc, fmt.Errorf("failed to stringify element type for parameter %s: %w", param.Name, err)
 					}
-					elementTypeInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType.KeyType)
+
+					elementTypeInfo := FieldInfo{
+						Type: elementTypeStr,
+					}
+					elementTypeInfo.Fields, err = buildFieldInfoFromResolved(param.ResolvedType.KeyType)
+					if err != nil {
+						return desc, fmt.Errorf("failed to build element field info for parameter %s: %w", param.Name, err)
+					}
 					// For parameter-level slices/maps, we need to return this as the main info
 					paramInfo.ElementType = &elementTypeInfo
 				} else if param.ResolvedType.IsMap {
 					if param.ResolvedType.KeyType != nil {
-						keyTypeInfo := FieldInfo{
-							Type: resolvedTypeToString(param.ResolvedType.KeyType),
+						keyTypeStr, err := resolvedTypeToString(param.ResolvedType.KeyType)
+						if err != nil {
+							return desc, fmt.Errorf("failed to stringify key type for parameter %s: %w", param.Name, err)
 						}
-						keyTypeInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType.KeyType)
+
+						keyTypeInfo := FieldInfo{
+							Type: keyTypeStr,
+						}
+						keyTypeInfo.Fields, err = buildFieldInfoFromResolved(param.ResolvedType.KeyType)
+						if err != nil {
+							return desc, fmt.Errorf("failed to build key field info for parameter %s: %w", param.Name, err)
+						}
 						paramInfo.KeyType = &keyTypeInfo
 					}
 					if param.ResolvedType.ValueType != nil {
-						valueTypeInfo := FieldInfo{
-							Type: resolvedTypeToString(param.ResolvedType.ValueType),
+						valueTypeStr, err := resolvedTypeToString(param.ResolvedType.ValueType)
+						if err != nil {
+							return desc, fmt.Errorf("failed to stringify value type for parameter %s: %w", param.Name, err)
 						}
-						valueTypeInfo.Fields = buildFieldInfoFromResolved(param.ResolvedType.ValueType)
+
+						valueTypeInfo := FieldInfo{
+							Type: valueTypeStr,
+						}
+						valueTypeInfo.Fields, err = buildFieldInfoFromResolved(param.ResolvedType.ValueType)
+						if err != nil {
+							return desc, fmt.Errorf("failed to build value field info for parameter %s: %w", param.Name, err)
+						}
 						paramInfo.ValueType = &valueTypeInfo
 					}
 				}
 			} else {
 				// Fallback to old logic
-				paramInfo.Fields = buildFieldInfo(param.Type)
+				fields, err := buildFieldInfo(param.Type)
+				if err != nil {
+					return desc, fmt.Errorf("failed to build field info for parameter %s: %w", param.Name, err)
+				}
+				paramInfo.Fields = fields
 			}
 
 			methodDesc.Parameters[param.Name] = paramInfo
@@ -790,148 +828,246 @@ func NewDescription(apiName string, methods []EnrichedMethod) APIDescription {
 		desc.Methods[method.Name] = methodDesc
 	}
 
-	return desc
+	return desc, nil
 }
 
 // buildFieldInfo recursively builds field information for a parsed type
-func buildFieldInfo(pt ParsedType) map[string]FieldInfo {
+func buildFieldInfo(pt ParsedType) (map[string]FieldInfo, error) {
 	fields := make(map[string]FieldInfo)
 
 	// If it's a struct, add its direct fields
 	if pt.Kind == TypeKindStruct && len(pt.Fields) > 0 {
 		for _, field := range pt.Fields {
+			typeStr, err := typeToString(field.Type)
+			if err != nil {
+				return nil, fmt.Errorf("failed to stringify field %s type: %w", field.Name, err)
+			}
+
 			fieldInfo := FieldInfo{
-				Type:        typeToString(field.Type),
+				Type:        typeStr,
 				Annotations: field.Tags,
 			}
 			// Recursively build nested fields
-			fieldInfo.Fields = buildFieldInfo(field.Type)
-			
+			nestedFields, err := buildFieldInfo(field.Type)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build nested field info for %s: %w", field.Name, err)
+			}
+			fieldInfo.Fields = nestedFields
+
 			// Handle nested slices and maps in struct fields
 			if field.Type.IsSlice && field.Type.KeyType != nil {
-				elementTypeInfo := FieldInfo{
-					Type: typeToString(*field.Type.KeyType),
+				elementTypeStr, err := typeToString(*field.Type.KeyType)
+				if err != nil {
+					return nil, fmt.Errorf("failed to stringify slice element type for field %s: %w", field.Name, err)
 				}
-				elementTypeInfo.Fields = buildFieldInfo(*field.Type.KeyType)
+
+				elementTypeInfo := FieldInfo{
+					Type: elementTypeStr,
+				}
+				elementTypeInfo.Fields, err = buildFieldInfo(*field.Type.KeyType)
+				if err != nil {
+					return nil, fmt.Errorf("failed to build element field info for field %s: %w", field.Name, err)
+				}
 				fieldInfo.ElementType = &elementTypeInfo
 			}
-			
+
 			if field.Type.IsMap {
 				if field.Type.KeyType != nil {
-					keyTypeInfo := FieldInfo{
-						Type: typeToString(*field.Type.KeyType),
+					keyTypeStr, err := typeToString(*field.Type.KeyType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to stringify map key type for field %s: %w", field.Name, err)
 					}
-					keyTypeInfo.Fields = buildFieldInfo(*field.Type.KeyType)
+
+					keyTypeInfo := FieldInfo{
+						Type: keyTypeStr,
+					}
+					keyTypeInfo.Fields, err = buildFieldInfo(*field.Type.KeyType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to build key field info for field %s: %w", field.Name, err)
+					}
 					fieldInfo.KeyType = &keyTypeInfo
 				}
 				if field.Type.ValueType != nil {
-					valueTypeInfo := FieldInfo{
-						Type: typeToString(*field.Type.ValueType),
+					valueTypeStr, err := typeToString(*field.Type.ValueType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to stringify map value type for field %s: %w", field.Name, err)
 					}
-					valueTypeInfo.Fields = buildFieldInfo(*field.Type.ValueType)
+
+					valueTypeInfo := FieldInfo{
+						Type: valueTypeStr,
+					}
+					valueTypeInfo.Fields, err = buildFieldInfo(*field.Type.ValueType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to build value field info for field %s: %w", field.Name, err)
+					}
 					fieldInfo.ValueType = &valueTypeInfo
 				}
 			}
-			
+
 			fields[field.Name] = fieldInfo
 		}
 	}
 
-	return fields
+	return fields, nil
 }
 
 // buildFieldInfoFromResolved recursively builds field information from a ResolvedType
-func buildFieldInfoFromResolved(rt *ResolvedType) map[string]FieldInfo {
+func buildFieldInfoFromResolved(rt *ResolvedType) (map[string]FieldInfo, error) {
 	fields := make(map[string]FieldInfo)
 
 	// If it's a struct, add its direct fields
 	if rt.Kind == TypeKindStruct && len(rt.Fields) > 0 {
 		for _, field := range rt.Fields {
+			typeStr, err := resolvedTypeToString(field.Type)
+			if err != nil {
+				return nil, fmt.Errorf("failed to stringify resolved field %s type: %w", field.Name, err)
+			}
+
 			fieldInfo := FieldInfo{
-				Type:        resolvedTypeToString(field.Type),
+				Type:        typeStr,
 				Annotations: field.Tags,
 			}
 			// Recursively build nested fields
-			fieldInfo.Fields = buildFieldInfoFromResolved(field.Type)
-			
+			nestedFields, err := buildFieldInfoFromResolved(field.Type)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build nested resolved field info for %s: %w", field.Name, err)
+			}
+			fieldInfo.Fields = nestedFields
+
 			// Handle nested slices and maps in struct fields
 			if field.Type.IsSlice && field.Type.KeyType != nil {
-				elementTypeInfo := FieldInfo{
-					Type: resolvedTypeToString(field.Type.KeyType),
+				elementTypeStr, err := resolvedTypeToString(field.Type.KeyType)
+				if err != nil {
+					return nil, fmt.Errorf("failed to stringify resolved slice element type for field %s: %w", field.Name, err)
 				}
-				elementTypeInfo.Fields = buildFieldInfoFromResolved(field.Type.KeyType)
+
+				elementTypeInfo := FieldInfo{
+					Type: elementTypeStr,
+				}
+				elementTypeInfo.Fields, err = buildFieldInfoFromResolved(field.Type.KeyType)
+				if err != nil {
+					return nil, fmt.Errorf("failed to build resolved element field info for field %s: %w", field.Name, err)
+				}
 				fieldInfo.ElementType = &elementTypeInfo
 			}
-			
+
 			if field.Type.IsMap {
 				if field.Type.KeyType != nil {
-					keyTypeInfo := FieldInfo{
-						Type: resolvedTypeToString(field.Type.KeyType),
+					keyTypeStr, err := resolvedTypeToString(field.Type.KeyType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to stringify resolved map key type for field %s: %w", field.Name, err)
 					}
-					keyTypeInfo.Fields = buildFieldInfoFromResolved(field.Type.KeyType)
+
+					keyTypeInfo := FieldInfo{
+						Type: keyTypeStr,
+					}
+					keyTypeInfo.Fields, err = buildFieldInfoFromResolved(field.Type.KeyType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to build resolved key field info for field %s: %w", field.Name, err)
+					}
 					fieldInfo.KeyType = &keyTypeInfo
 				}
 				if field.Type.ValueType != nil {
-					valueTypeInfo := FieldInfo{
-						Type: resolvedTypeToString(field.Type.ValueType),
+					valueTypeStr, err := resolvedTypeToString(field.Type.ValueType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to stringify resolved map value type for field %s: %w", field.Name, err)
 					}
-					valueTypeInfo.Fields = buildFieldInfoFromResolved(field.Type.ValueType)
+
+					valueTypeInfo := FieldInfo{
+						Type: valueTypeStr,
+					}
+					valueTypeInfo.Fields, err = buildFieldInfoFromResolved(field.Type.ValueType)
+					if err != nil {
+						return nil, fmt.Errorf("failed to build resolved value field info for field %s: %w", field.Name, err)
+					}
 					fieldInfo.ValueType = &valueTypeInfo
 				}
 			}
-			
+
 			fields[field.Name] = fieldInfo
 		}
 	}
 
-	return fields
+	return fields, nil
 }
 
-// resolvedTypeToString converts a ResolvedType to its string representation
-func resolvedTypeToString(rt *ResolvedType) string {
+// resolvedTypeToString converts a ResolvedType to its string representation, returning an error for unknown types that cannot be resolved to a valid string representation. This ensures that callers can handle type resolution failures appropriately instead of receiving invalid strings like "unknown" or "map[unknown]unknown".
+func resolvedTypeToString(rt *ResolvedType) (string, error) {
 	if rt == nil {
-		return "unknown"
+		return "", fmt.Errorf("resolved type is nil")
 	}
-	
+
 	if rt.IsPointer && rt.Underlying != nil {
-		return "*" + resolvedTypeToString(rt.Underlying)
+		underlyingStr, err := resolvedTypeToString(rt.Underlying)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify pointer underlying type: %w", err)
+		}
+		return "*" + underlyingStr, nil
 	}
 	if rt.IsSlice && rt.KeyType != nil {
-		return "[]" + resolvedTypeToString(rt.KeyType)
+		elemStr, err := resolvedTypeToString(rt.KeyType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify slice element type: %w", err)
+		}
+		return "[]" + elemStr, nil
 	}
 	if rt.IsMap && rt.KeyType != nil && rt.ValueType != nil {
-		return fmt.Sprintf("map[%s]%s", resolvedTypeToString(rt.KeyType), resolvedTypeToString(rt.ValueType))
+		keyStr, err := resolvedTypeToString(rt.KeyType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify map key type: %w", err)
+		}
+		valueStr, err := resolvedTypeToString(rt.ValueType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify map value type: %w", err)
+		}
+		return fmt.Sprintf("map[%s]%s", keyStr, valueStr), nil
 	}
 	if rt.Package != "" {
-		return rt.Package + "." + rt.Name
+		return rt.Package + "." + rt.Name, nil
 	}
 	if rt.Name != "" {
-		return rt.Name
+		return rt.Name, nil
 	}
-	return "unknown"
+	return "", fmt.Errorf("unable to determine string representation for resolved type with kind %v", rt.Kind)
 }
 
-// typeToString converts a ParsedType to its string representation
-func typeToString(pt ParsedType) string {
+// typeToString converts a ParsedType to its string representation, returning an error for unknown types that cannot be resolved to a valid string representation. This ensures that callers can handle type resolution failures appropriately instead of receiving invalid strings like "unknown" or "map[unknown]unknown".
+func typeToString(pt ParsedType) (string, error) {
 	if pt.IsPointer {
-		return "*" + typeToString(*pt.KeyType)
+		elemStr, err := typeToString(*pt.KeyType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify pointer element type: %w", err)
+		}
+		return "*" + elemStr, nil
 	}
 	if pt.IsSlice {
-		return "[]" + typeToString(*pt.KeyType)
+		elemStr, err := typeToString(*pt.KeyType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify slice element type: %w", err)
+		}
+		return "[]" + elemStr, nil
 	}
 	if pt.IsMap {
-		if pt.KeyType != nil && pt.ValueType != nil {
-			return fmt.Sprintf("map[%s]%s", typeToString(*pt.KeyType), typeToString(*pt.ValueType))
+		if pt.KeyType == nil || pt.ValueType == nil {
+			return "", fmt.Errorf("map type missing key or value type")
 		}
-		return "map[unknown]unknown"
+		keyStr, err := typeToString(*pt.KeyType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify map key type: %w", err)
+		}
+		valueStr, err := typeToString(*pt.ValueType)
+		if err != nil {
+			return "", fmt.Errorf("failed to stringify map value type: %w", err)
+		}
+		return fmt.Sprintf("map[%s]%s", keyStr, valueStr), nil
 	}
 	if pt.Package != "" {
-		return pt.Package + "." + pt.Name
+		return pt.Package + "." + pt.Name, nil
 	}
 	if pt.Name != "" {
-		return pt.Name
+		return pt.Name, nil
 	}
-	return "unknown"
+	return "", fmt.Errorf("unable to determine string representation for type with kind %v", pt.Kind)
 }
 
 // FilterByPrefix filters methods by prefix
