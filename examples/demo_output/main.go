@@ -69,7 +69,7 @@ func main() {
 			continue
 		}
 
-	// Transform methods
+		// Transform methods
 		enriched, err := transformer.Transform(filtered)
 		if err != nil {
 			log.Fatalf("Failed to transform methods for %s: %v", f.name, err)
@@ -86,7 +86,7 @@ func main() {
 				} else {
 					fmt.Printf("   Debug: ResolvedType is nil\n")
 				}
-				
+
 				// Check registry
 				registry := parser.GetRegistry()
 				if _, exists := registry.GetType("Company"); exists {
@@ -98,7 +98,10 @@ func main() {
 		}
 
 		// Create API description
-		desc := apigen.NewDescription("DemoAPI", enriched)
+		desc, err := apigen.NewDescription("DemoAPI", enriched)
+		if err != nil {
+			log.Fatalf("Failed to create API description for %s: %v", f.name, err)
+		}
 
 		// Generate JSON
 		content, err := jsonGenerator.Generate(desc)
@@ -132,13 +135,16 @@ func main() {
 		log.Fatalf("Failed to transform all methods: %v", err)
 	}
 
-	desc := apigen.NewDescription("GoldenFileDemo", allEnriched)
+	desc, err := apigen.NewDescription("GoldenFileDemo", allEnriched)
+	if err != nil {
+		log.Fatalf("Failed to create golden file API description: %v", err)
+	}
 
 	for methodName, methodDesc := range desc.Methods {
 		// Create individual API description for this method
 		singleMethodDesc := apigen.APIDescription{
-			APIName:  "DemoAPI",
-			Methods:  map[string]apigen.MethodDescription{methodName: methodDesc},
+			APIName: "DemoAPI",
+			Methods: map[string]apigen.MethodDescription{methodName: methodDesc},
 		}
 
 		content, err := jsonGenerator.Generate(singleMethodDesc)

@@ -54,10 +54,10 @@ func (bt *BasicTypes) ProcessIDs(ids []int) error {
 
 // MapTypes demonstrates map types
 type Profile struct {
-	Bio     string   `json:"bio"`
-	Age     int      `json:"age"`
-	Active  bool     `json:"active"`
-	Tags    []string `json:"tags"`
+	Bio    string   `json:"bio"`
+	Age    int      `json:"age"`
+	Active bool     `json:"active"`
+	Tags   []string `json:"tags"`
 }
 
 // ProcessProfiles processes a map of user profiles
@@ -72,20 +72,20 @@ func (bt *BasicTypes) ProcessData(data map[string]string) error {
 
 // ComplexTypes demonstrates complex nested structures
 type Project struct {
-	ID          int                 `json:"id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Owner       User                `json:"owner"`
-	Members     []User              `json:"members"`
-	Metadata    map[string]string  `json:"metadata"`
+	ID          int               `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Owner       User              `json:"owner"`
+	Members     []User            `json:"members"`
+	Metadata    map[string]string `json:"metadata"`
 }
 
 type Team struct {
-	ID          int                `json:"id"`
-	Name        string             `json:"name"`
-	Projects    []Project          `json:"projects"`
-	Lead        User               `json:"lead"`
-	Settings    map[string]string  `json:"settings"`
+	ID       int               `json:"id"`
+	Name     string            `json:"name"`
+	Projects []Project         `json:"projects"`
+	Lead     User              `json:"lead"`
+	Settings map[string]string `json:"settings"`
 }
 
 // ProcessTeam processes a complex nested team structure
